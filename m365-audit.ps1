@@ -1,6 +1,6 @@
 # Justin Tucker - 2024-07-29
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
-# - https://github.com/...
+# - https://github.com/jst327/m365-privileged-audit
 
 # Parameters
 $m = 'Microsoft.Graph'
