@@ -1,4 +1,4 @@
-# Justin Tucker - 2024-07-30
+# Justin Tucker - 2024-08-04
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # - https://github.com/jst327/m365-privileged-audit
 
@@ -8,7 +8,6 @@
 
 ## Login to M365 tenant and approve delegated permissions to run scripts
 Connect-MgGraph -Scopes 'Organization.Read.All' -NoWelcome
-
 
 ## Licensing audit
 $rowCount = 1
