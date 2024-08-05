@@ -9,7 +9,7 @@
 ## Login to M365 tenant and approve delegated permissions to run scripts
 Connect-MgGraph -Scopes 'Organization.Read.All' -NoWelcome
 
-## Licensing audit
+## Licensing Audit
 $rowCount = 1
 $licenseHash = @{}
 $licenseFilePath = 'https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv'
@@ -30,7 +30,7 @@ Get-MgSubscribedSKU -All | Select-Object SkuPartNumber, SkuId, @{Name = 'ActiveU
 		} 
 	} | Sort-Object 'Row#' | Out-GridView -Title 'Microsoft 365 Licensing'
 
-## Admin role audit
+## Privileged Users Audit
 # https://ourcloudnetwork.com/how-to-export-all-azuread-pim-roles-with-microsoft-graph-powershell/
 $rowCount = 1
 $EligiblePIMRoles = Get-MgRoleManagementDirectoryRoleEligibilitySchedule -All -ExpandProperty *
@@ -38,7 +38,7 @@ $AssignedPIMRoles = Get-MgRoleManagementDirectoryRoleAssignmentSchedule -All -Ex
 
 $PIMRoles = $EligiblePIMRoles + $AssignedPIMRoles
 
-$Report = [System.Collections.Generic.List[Object]]::new()
+$privilegedUsers = [System.Collections.Generic.List[Object]]::new()
 
 foreach ($a in $PIMRoles) {
     $regex = "^([^.]+)\.([^.]+)\.(.+)$"
@@ -46,20 +46,22 @@ foreach ($a in $PIMRoles) {
 
     $obj = [pscustomobject][ordered]@{
 		'Row#'					= $rowCount++
-    	'Assigned'				= $a.Principal.AdditionalProperties.displayName
-    	'Assigned Type'			= $matches[3]
-    	'Assigned Role'			= $a.RoleDefinition.DisplayName
+		'Assigned Role'			= $a.RoleDefinition.DisplayName
     	'Assigned Role Scope'	= $a.directoryScopeId
-    	'Assignment Type'		= (&{if ($a.AssignmentType -eq "Assigned") {"Active"} else {"Eligible"}})
+    	'Display Name'			= $a.Principal.AdditionalProperties.displayName
+    	'User Principal Name'	= $a.Principal.AdditionalProperties.userPrincipalName
+		'Is Guest Account?'		= (&{if ($a.Principal.AdditionalProperties.userPrincipalName -match '#EXT#') {'True'} else {'False'}})
+		'Assigned Type'			= $matches[3]
+    	'Assignment Type'		= (&{if ($a.AssignmentType -eq 'Assigned') {'Active'} else {'Eligible'}})
     	'Is Built In'			= $a.roleDefinition.isBuiltIn
     	'Created Date (UTC)'	= $a.CreatedDateTime
     	'Expiration type'		= $a.ScheduleInfo.Expiration.type
     	'Expiration Date (UTC)'	= switch ($a.ScheduleInfo.Expiration.EndDateTime) {
         	{$a.ScheduleInfo.Expiration.EndDateTime -match '20'} {$a.ScheduleInfo.Expiration.EndDateTime}
-        	{$a.ScheduleInfo.Expiration.EndDateTime -notmatch '20'} {"N/A"}
+        	{$a.ScheduleInfo.Expiration.EndDateTime -notmatch '20'} {'N/A'}
         }
     }
-    $report.Add($obj)
+    $privilegedUsers.Add($obj)
 }
 
-$Report | Out-GridView -Title 'Microsoft 365 Privileged Users'
+$privilegedUsers | Out-GridView -Title 'Microsoft 365 Privileged Users'
