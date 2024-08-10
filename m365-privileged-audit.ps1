@@ -13,95 +13,49 @@
 $licenseGUID = $null
 $licenseString = $null
 
-function Write-Log{
-	[CmdletBinding()]
-	param(
-		[Parameter()]
-		[ValidateNotNullOrEmpty()]
-		[object]$Message,
-
-		[Parameter()]
-		[ValidateNotNullOrEmpty()]
-		[ValidateSet('ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE', IgnoreCase=$false)]
-		[string]$Severity = 'INFO'
-	)
-
-	if($Severity -ceq 'TRACE'){
-		$color = [ConsoleColor]::DarkGray
-	}elseif($Severity -ceq 'DEBUG'){
-		$color = [ConsoleColor]::Gray
-	}elseif($Severity -ceq 'INFO'){
-		$color = [ConsoleColor]::Cyan
-	}elseif($Severity -ceq 'WARN'){
-		$color = [ConsoleColor]::Yellow
-		[void]$warnings.Add([PSCustomObject]@{
-			Text = $Message
-		})
-	}elseif($Severity -ceq 'ERROR'){
-		$color = [ConsoleColor]::Red
-	}
-
-	$msg = "$(Get-Date -f s) [$Severity] $Message"
-
-	# - https://stackoverflow.com/questions/38523369/write-host-vs-write-information-in-powershell-5
-	# - https://blog.kieranties.com/2018/03/26/write-information-with-colours
-	Write-Information ([System.Management.Automation.HostInformationMessage]@{
-		Message = $msg
-		ForegroundColor = $color
-	})
-}
-
 # Connect to Microsoft Graph
 function Connect-MicrosoftGraph {
-	Write-Log 'Connecting to Microsoft Graph...'
-    try {
+	try {
     	Connect-MgGraph -Scopes "AuditLog.Read.All", "GroupMember.Read.All", "Organization.Read.All", "RoleEligibilitySchedule.Read.Directory", "RoleManagement.Read.Directory", "RoleManagement.Read.All", "User.Read.All" -NoWelcome
 	} catch {
 		Write-Error "Failed to connect to Microsoft Graph. $_"
 	}
 }
 
-# Function to get a list of all users
-<#function Get-AllUsers {
-	try {
-    	Connect-MicrosoftGraph
-    	$users = Get-MgUser -All | Sort-Object DisplayName
-    	$users | Select-Object @{Name='Index';Expression={[array]::IndexOf($users, $_) + 1}}, DisplayName, UserPrincipalName, Mail
-	} catch {
-		Write-Error "Failed to retrieve all users. $_"
-	}
-}#>
-
-# Function
+# Function to get a list of all users, MFA, and SSPR status
 function Get-AllUsers {
-	Connect-MicrosoftGraph
+	try {
+		Connect-MicrosoftGraph
 
-	# Retrieve the MFA registration details for all users
-	$mfaRegistrationDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
+		# Retrieve the MFA registration details for all users
+		$mfaRegistrationDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
 
-	# Prepare an array to store the results
-	$mfaReport = @()
+		# Prepare an array to store the results
+		$mfaReport = @()
 
-	# Loop through each user's MFA registration details
-	foreach ($mfaDetail in $mfaRegistrationDetails) {
-    	# Retrieve the user's display name based on their user ID
-    	$user = Get-MgUser -UserId $mfaDetail.Id
+		# Loop through each user's MFA registration details
+		foreach ($mfaDetail in $mfaRegistrationDetails) {
+    		# Retrieve the user's display name based on their user ID
+    		$user = Get-MgUser -UserId $mfaDetail.Id
 
-    	# Create a custom object with the desired properties
-    	$mfaReport += [PSCustomObject]@{
-	        'Display Name'				= $user.DisplayName
-        	'User Principal Name'		= $user.UserPrincipalName
-        	'Is Admin?'					= $mfaDetail.IsAdmin
-			'Is MFA Capable?'			= $mfaDetail.IsMfaCapable
-        	'Is MFA Registered?'		= $mfaDetail.IsMfaRegistered
-        	'Is Passwordless Capable?'	= $mfaDetail.IsPasswordlessCapable
-			'Is SSPR Capable?'			= $mfaDetail.IsSsprCapable
-			'Is SSPR Enabled?'			= $mfaDetail.IsSsprEnabled
-        	'Is SSPR Registered?'		= $mfaDetail.IsSsprRegistered
-        	'Last Updated'				= $mfaDetail.LastUpdatedDateTime
-    	}
+    		# Create a custom object with the desired properties
+    		$mfaReport += [PSCustomObject]@{
+		        'Display Name'				= $user.DisplayName
+    	    	'User Principal Name'		= $user.UserPrincipalName
+        		'Is Admin?'					= $mfaDetail.IsAdmin
+				'Is MFA Capable?'			= $mfaDetail.IsMfaCapable
+        		'Is MFA Registered?'		= $mfaDetail.IsMfaRegistered
+        		'Is Passwordless Capable?'	= $mfaDetail.IsPasswordlessCapable
+				'Is SSPR Capable?'			= $mfaDetail.IsSsprCapable
+				'Is SSPR Enabled?'			= $mfaDetail.IsSsprEnabled
+        		'Is SSPR Registered?'		= $mfaDetail.IsSsprRegistered
+        		'Last Updated'				= $mfaDetail.LastUpdatedDateTime
+    		}
+		}
+		$mfaReport | Select-Object @{Name='Index';Expression={[array]::IndexOf($mfaReport, $_) + 1}}, *
+	} catch {
+		Write-Error "Failed to retrieve users. $_"
 	}
-	$mfaReport | Select-Object @{Name='Index';Expression={[array]::IndexOf($mfaReport, $_) + 1}}, *
 }
 
 # Function to get a list of all groups
