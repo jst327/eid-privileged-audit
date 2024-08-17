@@ -2,13 +2,14 @@
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # - https://github.com/jst327/m365-privileged-audit
 
-# Requires Microsoft Graph API
+# Requires Microsoft Graph PowerShell Module
+# Requires Exchange Online PowerShell Module
 # Requires PowerShell 5.1 or later
 # Request .NET Framework 4.7.2 or later
 
 # Global variables to hold the license data
-$licenseGUID = $null
-$licenseString = $null
+#$licenseGUID = $null
+#$licenseString = $null
 
 # Function for writing logs
 function Write-Log {
@@ -525,7 +526,7 @@ function Get-AuditStatus {
 # Perform-Audit function
 function Start-Audit {
     try {
-        Write-Log 'Generating reports...'
+        Write-Log 'Starting audit...'
         $users = Get-AllUsers
         $groups = Get-AllGroups
         $privilegedUsers = Get-PrivilegedUsers
@@ -557,7 +558,7 @@ Show-Information
 # Show warnings and errors report
 Show-WarningsAndErrors
 
-Write-Log 'Script finished'
+Write-Log 'Script finished!'
 
 # If running in the console, wait for input before closing.
 if ($Host.Name -eq 'ConsoleHost')
