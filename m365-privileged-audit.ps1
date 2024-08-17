@@ -593,7 +593,7 @@ function Start-Audit {
         $tenantLicenses = Get-LicenseSummary
         #$inactiveUsers = Get-InactiveUsers
         #$activityLogs = Get-ActivityLogs
-	    $auditStatus = Test-AuditStatus
+		$auditStatus = Test-AuditStatus
 		$sharedMailbox = Test-SharedMailboxSignInAllowed
 
         $users | Out-GridView -Title 'All Users'
@@ -603,7 +603,7 @@ function Start-Audit {
         $tenantLicenses | Out-GridView -Title 'Tenant Licenses'
         #$inactiveUsers | Out-GridView -Title 'Inactive Users'
         #$activityLogs | Out-GridView -Title 'Activity Logs'
-	    $auditStatus
+		$auditStatus
 		$sharedMailbox | Out-GridView -Title 'Shared Mailbox Sign-In'
     } catch {
         Write-Log "An error occurred during the audit. $_" -LogLevel ERROR
