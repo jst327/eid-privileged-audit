@@ -46,7 +46,7 @@ function Test-MicrosoftGraphModule {
     if ($module) {
         Write-Log 'Microsoft Graph module is installed.'
     } else {
-        # Output an error and prompt user to press Enter to continue
+        # Output an error and prompt user to press any key to exit script
         Write-Log 'Microsoft Graph module is not installed.' -LogLevel ERROR
         Write-Log "Please install it using 'Install-Module -Name Microsoft.Graph'." -LogLevel ERROR
         Write-Log 'Press any key to exit the script.' -LogLevel ERROR
@@ -57,6 +57,30 @@ function Test-MicrosoftGraphModule {
 
 # Run module test
 Test-MicrosoftGraphModule
+
+# Continue with other script tasks if the module is found
+Write-Log 'Continuing with the rest of the script...'
+
+# Function to check if Exchange Online module is installed
+function Test-ExchangeOnlineModule {
+    # Check if Exchange Online module is installed
+    Write-Log 'Checking to see if Exchange Online Module is installed'
+    $module = Get-Module -Name 'ExchangeOnlineManagement' -ListAvailable
+
+    if ($module) {
+        Write-Log 'Exchange Online module is installed.'
+    } else {
+        # Output an error and prompt user to press any key to exit script
+        Write-Log 'Exchange Online module is not installed.' -LogLevel ERROR
+        Write-Log "Please install it using 'Install-Module -Name ExchangeOnlineManagement'." -LogLevel ERROR
+        Write-Log 'Press any key to exit the script.' -LogLevel ERROR
+        $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
+        exit
+    }
+}
+
+# Run module test
+Test-ExchangeOnlineModule
 
 # Continue with other script tasks if the module is found
 Write-Log 'Continuing with the rest of the script...'
@@ -495,7 +519,7 @@ function Start-Audit {
         $tenantLicenses = Get-LicenseSummary
         #$inactiveUsers = Get-InactiveUsers
         #$activityLogs = Get-ActivityLogs
-		$auditStatus = Get-AuditStatus
+	    $auditStatus = Get-AuditStatus
 
         $users | Out-GridView -Title 'All Users'
         $groups | Out-GridView -Title 'All Groups'
@@ -504,7 +528,7 @@ function Start-Audit {
         $tenantLicenses | Out-GridView -Title 'Tenant Licenses'
         #$inactiveUsers | Out-GridView -Title 'Inactive Users'
         #$activityLogs | Out-GridView -Title 'Activity Logs'
-		$auditStatus
+	    $auditStatus
     } catch {
         Write-Log "An error occurred during the audit. $_" -LogLevel ERROR
     }
