@@ -48,9 +48,9 @@ function Test-MicrosoftGraphModule {
     } else {
         # Output an error and prompt user to press Enter to continue
         Write-Log 'Microsoft Graph module is not installed.' -LogLevel ERROR
-        Write-Log 'Please install it using 'Install-Module -Name Microsoft.Graph'.' -LogLevel ERROR
+        Write-Log "Please install it using 'Install-Module -Name Microsoft.Graph'." -LogLevel ERROR
         Write-Log 'Press Enter to exit the script.' -LogLevel ERROR
-        Read-Host
+        $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
         exit
     }
 }
