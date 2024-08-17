@@ -59,7 +59,7 @@ function Test-MicrosoftGraphModule {
 Test-MicrosoftGraphModule
 
 # Continue with other script tasks if the module is found
-Write-Log 'Continuing with the rest of the script...'
+Write-Log 'Continuing with the rest of the script...' -LogLevel TRACE
 
 # Function to check if Exchange Online module is installed
 function Test-ExchangeOnlineModule {
@@ -83,7 +83,7 @@ function Test-ExchangeOnlineModule {
 Test-ExchangeOnlineModule
 
 # Continue with other script tasks if the module is found
-Write-Log 'Continuing with the rest of the script...'
+Write-Log 'Continuing with the rest of the script...' -LogLevel TRACE
 
 # Global array to store informational events
 $Global:Information = @()
@@ -166,7 +166,7 @@ function Connect-ToMicrosoftGraph {
     # Redirect warnings and errors to variables
     $ErrorActionPreference = 'Stop'
     $WarningPreference = 'Continue'
-    Write-Log 'Connecting to Microsoft Graph...'
+
 	try {
     	Connect-MgGraph -Scopes 'AuditLog.Read.All', 'GroupMember.Read.All', 'Organization.Read.All', 'RoleEligibilitySchedule.Read.Directory', 'RoleManagement.Read.Directory', 'RoleManagement.Read.All', 'User.Read.All' -NoWelcome
 	} catch {
@@ -199,6 +199,7 @@ function Connect-ToExchangeOnline {
 
 # Function to get a list of all users, MFA, and SSPR status
 function Get-AllUsers {
+    Write-Log "Starting 'All Users' report."
     # Redirect warnings and errors to variables
     $ErrorActionPreference = 'Stop'
     $WarningPreference = 'Continue'
@@ -244,6 +245,7 @@ function Get-AllUsers {
 
 # Function to get a list of all groups
 function Get-AllGroups {
+    Write-Log "Starting 'All Groups' report."
     # Redirect warnings and errors to variables
     $ErrorActionPreference = 'Stop'
     $WarningPreference = 'Continue'
@@ -264,6 +266,7 @@ function Get-AllGroups {
 
 # Function to get a list of privileged users
 function Get-PrivilegedUsers {
+    Write-Log "Starting 'Privileged Users' report."
     # Redirect warnings and errors to variables
     $ErrorActionPreference = 'Stop'
     $WarningPreference = 'Continue'
@@ -347,6 +350,7 @@ function Confirm-LicenseNamesLoaded {
 
 # Function to get user licenses
 function Get-UserLicenses {
+    Write-Log "Starting 'User Licenses' report."
 	# Redirect warnings and errors to variables
 	$ErrorActionPreference = 'Stop'
 	$WarningPreference = 'Continue'
@@ -378,6 +382,7 @@ function Get-UserLicenses {
 
 # Function to get a list of M365 licenses
 function Get-LicenseSummary {
+    Write-Log "Starting 'Tenant Licenses' report."
 	# Redirect warnings and errors to variables
 	$ErrorActionPreference = 'Stop'
 	$WarningPreference = 'Continue'
@@ -413,6 +418,7 @@ function Get-LicenseSummary {
 
 # Function to get a list of inactive users (no logins for the past 30 days)
 function Get-InactiveUsers {
+    Write-Log "Starting 'Inactive Users' report."
 	# Redirect warnings and errors to variables
 	$ErrorActionPreference = 'Stop'
 	$WarningPreference = 'Continue'
@@ -472,6 +478,7 @@ function Get-InactiveUsers {
 
 # Function to get activity logs
 function Get-ActivityLogs {
+    Write-Log "Starting 'Activity Logs' report."
 	# Redirect warnings and errors to variables
 	$ErrorActionPreference = 'Stop'
 	$WarningPreference = 'Continue'
@@ -487,7 +494,12 @@ function Get-ActivityLogs {
 }
 
 # Function to see if audting is enabled for tenant
-function Get-AuditStatus {    
+function Get-AuditStatus {  
+    Write-Log "Starting 'Audit Status' report."
+	# Redirect warnings and errors to variables
+	$ErrorActionPreference = 'Stop'
+	$WarningPreference = 'Continue'
+    
     try {
         Connect-ToExchangeOnline
         # Get the audit log configuration
