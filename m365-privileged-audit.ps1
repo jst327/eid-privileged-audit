@@ -1,10 +1,28 @@
-# Justin Tucker - 2024-08-11
+# Justin Tucker - 2024-08-17
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # - https://github.com/jst327/m365-privileged-audit
 
 # Requires Microsoft Graph API
 # Requires PowerShell 5.1 or later
 # Request .NET Framework 4.7.2 or later
+
+# Function to check if Microsoft Graph module is installed
+function Test-MicrosoftGraphModule {
+    # Check if Microsoft.Graph module is installed
+    $module = Get-Module -Name "Microsoft.Graph" -ListAvailable
+
+    if ($module) {
+        Write-Host "Microsoft Graph module is installed." -ForegroundColor Green
+    } else {
+        Throw "Microsoft Graph module is not installed. Please install it using 'Install-Module -Name Microsoft.Graph'. The script will now exit."
+    }
+}
+
+# Run function to see if Microsoft Graph module is installed
+Test-MicrosoftGraphModule
+
+# Continue with other script tasks if the module is found
+Write-Host "Continuing with the rest of the script..." -ForegroundColor Yellow
 
 # Ensure required modules are installed
 #Install-Module Microsoft.Graph -Force -Scope CurrentUser
