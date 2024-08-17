@@ -6,35 +6,49 @@
 # Requires PowerShell 5.1 or later
 # Request .NET Framework 4.7.2 or later
 
-# Function to check if script execution is enabled
-function Test-ScriptExecutionPolicy {
-    $executionPolicy = Get-ExecutionPolicy
-    Write-Host "Current Execution Policy: $executionPolicy"
+# Global variables to hold the license data
+$licenseGUID = $null
+$licenseString = $null
 
-    if ($executionPolicy -ne "Unrestricted") {
-        Write-Error 'Script execution is not set to unrestricted.'
-    } else {
-        Write-Host 'Script execution is enabled.' -ForegroundColor Green
+# Function for writing logs
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$LogLevel = 'INFO',
+        [switch]$Verbose
+    )
+
+    $colors = @{
+        TRACE = 'DarkGray'
+        DEBUG = 'Gray'
+        INFO = 'Cyan'
+        WARN = 'Yellow'
+        ERROR = 'Red'
     }
+
+    if ($Verbose) {
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'
+    } else {
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    }
+
+    $logEntry = "$timestamp [$LogLevel] $Message"
+
+    Write-Host $logEntry -ForegroundColor $colors[$LogLevel]
 }
-
-# Run execution policy test
-Test-ScriptExecutionPolicy
-
-# Continue with other script tasks if script execution is enabled
-Write-Host 'Continuing with the rest of the script...' -ForegroundColor Yellow
 
 # Function to check if Microsoft Graph module is installed
 function Test-MicrosoftGraphModule {
     # Check if Microsoft.Graph module is installed
+    Write-Log 'Checking to see if Microsoft Graph Module is installed'
     $module = Get-Module -Name 'Microsoft.Graph' -ListAvailable
 
     if ($module) {
-        Write-Host 'Microsoft Graph module is installed.' -ForegroundColor Green
+        Write-Log 'Microsoft Graph module is installed.'
     } else {
         # Output an error and prompt user to press Enter to continue
-        Write-Error 'Microsoft Graph module is not installed. Please install it using 'Install-Module -Name Microsoft.Graph'.'
-        Write-Host 'Press Enter to exit the script.' -ForegroundColor Red
+        Write-Log 'Microsoft Graph module is not installed. Please install it using 'Install-Module -Name Microsoft.Graph'.' -LogLevel ERROR
+        Write-Log 'Press Enter to exit the script.' -LogLevel ERROR
         Read-Host
         exit
     }
@@ -44,15 +58,7 @@ function Test-MicrosoftGraphModule {
 Test-MicrosoftGraphModule
 
 # Continue with other script tasks if the module is found
-Write-Host 'Continuing with the rest of the script...' -ForegroundColor Yellow
-
-
-# Ensure required modules are installed
-#Install-Module Microsoft.Graph -Force -Scope CurrentUser
-
-# Global variables to hold the license data
-$licenseGUID = $null
-$licenseString = $null
+Write-Log 'Continuing with the rest of the script...'
 
 # Global array to store informational events
 $Global:Information = @()
@@ -135,7 +141,7 @@ function Connect-ToMicrosoftGraph {
     # Redirect warnings and errors to variables
     $ErrorActionPreference = 'Stop'
     $WarningPreference = 'Continue'
-
+    Write-Log 'Connecting to Microsoft Graph...'
 	try {
     	Connect-MgGraph -Scopes 'AuditLog.Read.All', 'GroupMember.Read.All', 'Organization.Read.All', 'RoleEligibilitySchedule.Read.Directory', 'RoleManagement.Read.Directory', 'RoleManagement.Read.All', 'User.Read.All' -NoWelcome
 	} catch {
@@ -470,9 +476,11 @@ function Get-AuditStatus {
 
     } catch {
         Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $MyInvocation.MyCommand.Name
+        Write-Log $_.Exception.Message -LogLevel ERROR
     } finally {
         # Disconnect from the Microsoft 365 service
         Disconnect-ExchangeOnline -Confirm:$false
+        Write-Log 'Disconnected from Exchange Online' -LogLevel TRACE
     }
 }
 
@@ -497,7 +505,7 @@ function Start-Audit {
         #$activityLogs | Out-GridView -Title 'Activity Logs'
 		$auditStatus
     } catch {
-        Write-Error "An error occurred during the audit. $_"
+        Write-Log "An error occurred during the audit. $_" -LogLevel ERROR
     }
 }
 
@@ -513,6 +521,6 @@ Show-WarningsAndErrors
 # If running in the console, wait for input before closing.
 if ($Host.Name -eq 'ConsoleHost')
 {
-    Write-Host 'Press any key to continue...'
+    Write-Log 'Press any key to continue...'
     $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
 }
