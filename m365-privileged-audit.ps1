@@ -495,7 +495,7 @@ function Get-ActivityLogs {
 }
 
 # Function to see if audting is enabled for tenant
-function Get-AuditStatus {  
+function Test-AuditStatus {  
     Write-Log "Starting 'Audit Status' report."
 	# Redirect warnings and errors to variables
 	$ErrorActionPreference = 'Stop'
@@ -516,10 +516,69 @@ function Get-AuditStatus {
     } catch {
         Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $MyInvocation.MyCommand.Name
         Write-Log $_.Exception.Message -LogLevel ERROR
-    } finally {
-        # Disconnect from the Microsoft 365 service
-        Disconnect-ExchangeOnline -Confirm:$false
-        Write-Log 'Disconnected from Exchange Online' -LogLevel TRACE
+    }
+}
+
+# Function to check if shared mailboxes are allowed to sign in
+# https://learn.microsoft.com/en-us/microsoft-365/admin/email/create-a-shared-mailbox?view=o365-worldwide#block-sign-in-for-the-shared-mailbox-account
+function Test-SharedMailboxSignInAllowed {
+    Write-Log "Starting 'Shared Mailbox Sign-In Allowed' report."
+    # Redirect warnings and errors to variables
+    $ErrorActionPreference = 'Stop'
+    $WarningPreference = 'Continue'
+
+    try {
+        # Get all shared mailboxes
+        $sharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox | Select-Object Name, UserPrincipalName
+
+        # Get enabled and disabled accounts
+        $accountEnabled = Get-MgUser -Filter 'accountEnabled eq true' -Select UserPrincipalName
+        $accountDisabled = Get-MgUser -Filter 'accountEnabled eq false' -Select UserPrincipalName
+
+        # Create a list to store the custom objects (initialize as an array)
+        $mailboxStatusList = @()
+
+        # Loop through each shared mailbox
+        foreach ($mailbox in $sharedMailboxes) {
+            # Check if the mailbox is in the enabled or disabled list
+            $isEnabled = $accountEnabled.UserPrincipalName -contains $mailbox.UserPrincipalName
+            $isDisabled = $accountDisabled.UserPrincipalName -contains $mailbox.UserPrincipalName
+
+            # Determine the account status
+            $status = if ($isEnabled) { 
+                "Enabled" 
+            } elseif ($isDisabled) { 
+                "Disabled" 
+            } else { 
+                "Unknown" 
+            }
+
+            # If the account is enabled, output a warning message
+            if ($isEnabled) {
+                Write-Log "The shared mailbox account for '$($mailbox.UserPrincipalName)' is enabled." -LogLevel WARN
+                Add-ToWarningsAndErrors -Type 'Warning' -Message "The shared mailbox account for '$($mailbox.UserPrincipalName)' is enabled." -Function $MyInvocation.MyCommand.Name
+            }
+
+            # Create a custom object with the desired properties
+            $mailboxStatus = [PSCustomObject]@{
+                Name              = $mailbox.Name
+                UserPrincipalName = $mailbox.UserPrincipalName
+                AccountStatus     = $status
+            }
+
+            # Add the custom object to the list
+            $mailboxStatusList += $mailboxStatus
+        }
+
+        # Sort the entire collection by 'Name'
+        $mailboxStatusList = $mailboxStatusList | Sort-Object 'Name'
+    
+        # Output the sorted results with a row column
+        $mailboxStatusList | Select-Object @{Name='Row#';Expression={[array]::IndexOf($mailboxStatusList, $_) + 1}}, *
+
+    } catch {
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $MyInvocation.MyCommand.Name
+        Write-Log $_.Exception.Message -LogLevel ERROR
     }
 }
 
@@ -534,7 +593,8 @@ function Start-Audit {
         $tenantLicenses = Get-LicenseSummary
         #$inactiveUsers = Get-InactiveUsers
         #$activityLogs = Get-ActivityLogs
-	    $auditStatus = Get-AuditStatus
+	    $auditStatus = Test-AuditStatus
+		$sharedMailbox = Test-SharedMailboxSignInAllowed
 
         $users | Out-GridView -Title 'All Users'
         $groups | Out-GridView -Title 'All Groups'
@@ -544,6 +604,7 @@ function Start-Audit {
         #$inactiveUsers | Out-GridView -Title 'Inactive Users'
         #$activityLogs | Out-GridView -Title 'Activity Logs'
 	    $auditStatus
+		$sharedMailbox | Out-GridView -Title 'Shared Mailbox Sign-In'
     } catch {
         Write-Log "An error occurred during the audit. $_" -LogLevel ERROR
     }
