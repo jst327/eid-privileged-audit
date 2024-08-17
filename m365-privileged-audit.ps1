@@ -6,27 +6,45 @@
 # Requires PowerShell 5.1 or later
 # Request .NET Framework 4.7.2 or later
 
+# Function to check if script execution is enabled
+function Test-ScriptExecutionPolicy {
+    $executionPolicy = Get-ExecutionPolicy
+    Write-Host "Current Execution Policy: $executionPolicy"
+
+    if ($executionPolicy -ne "Unrestricted") {
+        Write-Error 'Script execution is not set to unrestricted.'
+    } else {
+        Write-Host 'Script execution is enabled.' -ForegroundColor Green
+    }
+}
+
+# Run execution policy test
+Test-ScriptExecutionPolicy
+
+# Continue with other script tasks if script execution is enabled
+Write-Host 'Continuing with the rest of the script...' -ForegroundColor Yellow
+
 # Function to check if Microsoft Graph module is installed
 function Test-MicrosoftGraphModule {
     # Check if Microsoft.Graph module is installed
-    $module = Get-Module -Name "Microsoft.Graph" -ListAvailable
+    $module = Get-Module -Name 'Microsoft.Graph' -ListAvailable
 
     if ($module) {
-        Write-Host "Microsoft Graph module is installed." -ForegroundColor Green
+        Write-Host 'Microsoft Graph module is installed.' -ForegroundColor Green
     } else {
         # Output an error and prompt user to press Enter to continue
-        Write-Error "Microsoft Graph module is not installed. Please install it using 'Install-Module -Name Microsoft.Graph'."
-        Write-Host "Press Enter to exit the script." -ForegroundColor Red
+        Write-Error 'Microsoft Graph module is not installed. Please install it using 'Install-Module -Name Microsoft.Graph'.'
+        Write-Host 'Press Enter to exit the script.' -ForegroundColor Red
         Read-Host
         exit
     }
 }
 
-# Example usage
+# Run module test
 Test-MicrosoftGraphModule
 
 # Continue with other script tasks if the module is found
-Write-Host "Continuing with the rest of the script..." -ForegroundColor Yellow
+Write-Host 'Continuing with the rest of the script...' -ForegroundColor Yellow
 
 
 # Ensure required modules are installed
