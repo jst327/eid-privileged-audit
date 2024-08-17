@@ -1,4 +1,4 @@
-# Justin Tucker - 2024-08-10
+# Justin Tucker - 2024-08-11
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # - https://github.com/jst327/m365-privileged-audit
 
@@ -13,19 +13,126 @@
 $licenseGUID = $null
 $licenseString = $null
 
+# Global array to store informational events
+$Global:Information = @()
+
+# Function to log informational events
+function Add-ToInformation {
+    param (
+        [string]$Type,
+        [string]$Function,
+        [string]$Message
+    )
+
+    # Calculate the next index based on the current array length
+    $rowNumber = $Global:Information.Count + 1
+
+    # Add the new entry to the global array with an index
+    $Global:Information += [PSCustomObject]@{
+        'Row#'      = $rowNumber
+        'Type'      = $Type
+        'Function'  = $Function
+        'Message'   = $Message
+    }
+}
+
+# Function to show informational events
+function Show-Information {
+    if (-not $Global:Information) {
+        # If no warnings or errors exist, add a placeholder entry
+        $Global:Information += [PSCustomObject]@{
+            'Row#'      = 1
+            'Type'      = 'Information'
+            'Function'  = 'N/A'
+			'Message'   = 'No information to report.'
+        }
+    }
+
+    $Global:Information | Out-GridView -Title 'Information Report'
+}
+
+# Global array to store the warnings and errors
+$Global:WarningsAndErrors = @()
+
+# Function to log warnings and errors
+function Add-ToWarningsAndErrors {
+    param (
+        [string]$Type,
+        [string]$Function,
+        [string]$Message        
+    )
+
+    # Calculate the next index based on the current array length
+    $rowNumber = $Global:WarningsAndErrors.Count + 1
+
+    # Add the new entry to the global array with an index
+    $Global:WarningsAndErrors += [PSCustomObject]@{
+        'Row#'      = $rowNumber
+        'Type'      = $Type
+        'Function'  = $Function
+        'Message'   = $Message
+    }
+}
+
+# Function to show the collected warnings and errors
+function Show-WarningsAndErrors {
+    if (-not $Global:WarningsAndErrors) {
+        # If no warnings or errors exist, add a placeholder entry
+        $Global:WarningsAndErrors += [PSCustomObject]@{
+            'Row#'      = 1
+            'Type'      = 'Information'
+            'Function'  = 'N/A'
+			'Message'   = 'No warnings or errors to report.'
+        }
+    }
+
+    $Global:WarningsAndErrors | Out-GridView -Title 'Warnings and Errors Report'
+}
+
 # Connect to Microsoft Graph
-function Connect-MicrosoftGraph {
+function Connect-ToMicrosoftGraph {
+    # Redirect warnings and errors to variables
+    $ErrorActionPreference = 'Stop'
+    $WarningPreference = 'Continue'
+
 	try {
-    	Connect-MgGraph -Scopes "AuditLog.Read.All", "GroupMember.Read.All", "Organization.Read.All", "RoleEligibilitySchedule.Read.Directory", "RoleManagement.Read.Directory", "RoleManagement.Read.All", "User.Read.All" -NoWelcome
+    	Connect-MgGraph -Scopes 'AuditLog.Read.All', 'GroupMember.Read.All', 'Organization.Read.All', 'RoleEligibilitySchedule.Read.Directory', 'RoleManagement.Read.Directory', 'RoleManagement.Read.All', 'User.Read.All' -NoWelcome
 	} catch {
-		Write-Error "Failed to connect to Microsoft Graph. $_"
+		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
 	}
+    $lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
+    }
+}
+
+# Connect to Exchange Online
+function Connect-ToExchangeOnline {
+    # Redirect warnings and errors to variables
+    $ErrorActionPreference = 'Stop'
+    $WarningPreference = 'Continue'
+
+    try {
+        Connect-ExchangeOnline -ShowProgress $false
+    } catch {
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+    }
+    $lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.name
+    }
 }
 
 # Function to get a list of all users, MFA, and SSPR status
 function Get-AllUsers {
-	try {
-		Connect-MicrosoftGraph
+    # Redirect warnings and errors to variables
+    $ErrorActionPreference = 'Stop'
+    $WarningPreference = 'Continue'
+	
+    try {
+		Connect-ToMicrosoftGraph
 
 		# Retrieve the MFA registration details for all users
 		$mfaRegistrationDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
@@ -52,62 +159,93 @@ function Get-AllUsers {
         		'Last Updated'				= $mfaDetail.LastUpdatedDateTime
     		}
 		}
-		$mfaReport | Select-Object @{Name='Index';Expression={[array]::IndexOf($mfaReport, $_) + 1}}, *
+		$mfaReport | Select-Object @{Name='Row#';Expression={[array]::IndexOf($mfaReport, $_) + 1}}, *
 	} catch {
-		Write-Error "Failed to retrieve users. $_"
+		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
 	}
+	$lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
+    }
 }
 
 # Function to get a list of all groups
 function Get-AllGroups {
+    # Redirect warnings and errors to variables
+    $ErrorActionPreference = 'Stop'
+    $WarningPreference = 'Continue'
+	
 	try {
-    	Connect-MicrosoftGraph
+    	Connect-ToMicrosoftGraph
     	$groups = Get-MgGroup -All | Sort-Object DisplayName
-    	$groups | Select-Object @{Name='Index';Expression={[array]::IndexOf($groups, $_) + 1}}, DisplayName, Mail
+    	$groups | Select-Object @{Name='Row#';Expression={[array]::IndexOf($groups, $_) + 1}}, DisplayName, Mail, Description
 	} catch {
-		Write-Error "Failed to retrieve all groups. $_"
+		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
 	}
+	$lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
+    }
 }
 
 # Function to get a list of privileged users
 function Get-PrivilegedUsers {
-	try {
-		Connect-MicrosoftGraph
-    	$EligiblePIMRoles = Get-MgRoleManagementDirectoryRoleEligibilitySchedule -All -ExpandProperty *
-    	$AssignedPIMRoles = Get-MgRoleManagementDirectoryRoleAssignmentSchedule -All -ExpandProperty *
-       	$PIMRoles = $EligiblePIMRoles + $AssignedPIMRoles
-    	$privilegedUsers = [System.Collections.Generic.List[Object]]::new()
+    # Redirect warnings and errors to variables
+    $ErrorActionPreference = 'Stop'
+    $WarningPreference = 'Continue'
+
+    try {
+        Connect-ToMicrosoftGraph
+        $EligiblePIMRoles = Get-MgRoleManagementDirectoryRoleEligibilitySchedule -All -ExpandProperty *
+        $AssignedPIMRoles = Get-MgRoleManagementDirectoryRoleAssignmentSchedule -All -ExpandProperty *
+        $PIMRoles = $EligiblePIMRoles + $AssignedPIMRoles
+        $privilegedUsers = [System.Collections.Generic.List[Object]]::new()
     
-		foreach ($role in $PIMRoles) {
-    	    $regex = "^([^.]+)\.([^.]+)\.(.+)$"
-        	$role.Principal.AdditionalProperties.'@odata.type' -match $regex | out-null
+        foreach ($role in $PIMRoles) {
+            $regex = "^([^.]+)\.([^.]+)\.(.+)$"
+            $role.Principal.AdditionalProperties.'@odata.type' -match $regex | out-null
             $obj = [pscustomobject][ordered]@{
-    	        'Assigned Role'			= $role.RoleDefinition.DisplayName
-        	    'Assigned Role Scope'	= $role.directoryScopeId
-            	'Display Name'			= $role.Principal.AdditionalProperties.displayName
-            	'User Principal Name'	= $role.Principal.AdditionalProperties.userPrincipalName
-            	'Is Guest Account?'		= (&{if ($role.Principal.AdditionalProperties.userPrincipalName -match '#EXT#') {'True'} else {'False'}})
-            	'Assigned Type'			= $matches[3]
-            	'Assignment Type'		= (&{if ($role.AssignmentType -eq 'Assigned') {'Active'} else {'Eligible'}})
-            	'Is Built In'			= $role.roleDefinition.isBuiltIn
-            	'Created Date (UTC)'	= $role.CreatedDateTime
-            	'Expiration type'		= $role.ScheduleInfo.Expiration.type
-            	'Expiration Date (UTC)'	= switch ($role.ScheduleInfo.Expiration.EndDateTime) {
-	                {$role.ScheduleInfo.Expiration.EndDateTime -match '20'} {$role.ScheduleInfo.Expiration.EndDateTime}
-                	{$role.ScheduleInfo.Expiration.EndDateTime -notmatch '20'} {'N/A'}
-            	}
-        	} | Sort-Object 'Assigned Role'
-        	$privilegedUsers.Add($obj)
-    	}
+                'Assigned Role'         = $role.RoleDefinition.DisplayName
+                'Assigned Role Scope'   = $role.directoryScopeId
+                'Display Name'          = $role.Principal.AdditionalProperties.displayName
+                'User Principal Name'   = $role.Principal.AdditionalProperties.userPrincipalName
+                'Is Guest Account?'     = (&{if ($role.Principal.AdditionalProperties.userPrincipalName -match '#EXT#') {'True'} else {'False'}})
+                'Assigned Type'         = $matches[3]
+                'Assignment Type'       = (&{if ($role.AssignmentType -eq 'Assigned') {'Active'} else {'Eligible'}})
+                'Is Built In'           = $role.roleDefinition.isBuiltIn
+                'Created Date (UTC)'    = $role.CreatedDateTime
+                'Expiration type'       = $role.ScheduleInfo.Expiration.type
+                'Expiration Date (UTC)' = switch ($role.ScheduleInfo.Expiration.EndDateTime) {
+                    {$role.ScheduleInfo.Expiration.EndDateTime -match '20'} {$role.ScheduleInfo.Expiration.EndDateTime}
+                    {$role.ScheduleInfo.Expiration.EndDateTime -notmatch '20'} {'N/A'}
+                }
+            }
+            $privilegedUsers.Add($obj)
+        }
     
-    	$privilegedUsers | Select-Object @{Name='Index';Expression={[array]::IndexOf($privilegedUsers, $_) + 1}}, *
-	} catch {
-		Write-Error "Failed to retrieve privileged users. $_"
-	}
+        # Sort the entire collection by 'Assigned Role'
+        $privilegedUsers = $privilegedUsers | Sort-Object 'Assigned Role'
+    
+        # Output the sorted results with a row column
+        $privilegedUsers | Select-Object @{Name='Row#';Expression={[array]::IndexOf($privilegedUsers, $_) + 1}}, *
+    } catch {
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+    }
+    $lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
+    }
 }
 
 # Function to hash tables of easy-to-read license display names from GUID or string
 function Get-LicenseNames {
+	# Redirect warnings and errors to variables
+	$ErrorActionPreference = 'Stop'
+	$WarningPreference = 'Continue'
+
     try {
         $global:licenseGUID = @{}
         $global:licenseString = @{}
@@ -119,7 +257,12 @@ function Get-LicenseNames {
                 $licenseString.Add($_.String_Id, $_.Product_Display_Name)
             }
     } catch {
-        Write-Error "Failed to retrieve license names. $_"
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+    }
+	$lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
     }
 }
 
@@ -132,10 +275,14 @@ function Confirm-LicenseNamesLoaded {
 
 # Function to get user licenses
 function Get-UserLicenses {
+	# Redirect warnings and errors to variables
+	$ErrorActionPreference = 'Stop'
+	$WarningPreference = 'Continue'
+
     Confirm-LicenseNamesLoaded
 
     try {
-        Connect-MicrosoftGraph
+        Connect-ToMicrosoftGraph
         $licensedUsers = Get-MgUser -Filter 'assignedLicenses/$count ne 0' -ConsistencyLevel eventual -CountVariable licensedUserCount -All -Select UserPrincipalName,DisplayName,AssignedLicenses | Sort-Object DisplayName
         $users = foreach ($user in $licensedUsers) {
             [PSCustomObject]@{
@@ -144,18 +291,29 @@ function Get-UserLicenses {
                 'Licenses'          = $user.AssignedLicenses | ForEach-Object { $global:licenseGUID[$_.SkuId] }  # Use the hashtable to lookup license names
             }
         }
-        $users | Select-Object @{Name='Index';Expression={[array]::IndexOf($users, $_) + 1}}, *
+        
+        # Output the sorted results with a row column
+        $users | Select-Object @{Name='Row#';Expression={[array]::IndexOf($users, $_) + 1}}, *
     } catch {
-        Write-Error "Failed to retrieve user licenses. $_"
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+    }
+	$lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
     }
 }
 
 # Function to get a list of M365 licenses
-function Get-M365LicenseSummary {
+function Get-LicenseSummary {
+	# Redirect warnings and errors to variables
+	$ErrorActionPreference = 'Stop'
+	$WarningPreference = 'Continue'
+
     Confirm-LicenseNamesLoaded
 
     try {
-        Connect-MicrosoftGraph
+        Connect-ToMicrosoftGraph
         $tenantLicenses = Get-MgSubscribedSKU -All | Select-Object SkuPartNumber, SkuId, @{Name = 'ActiveUnits'; Expression = { ($_.PrepaidUnits).Enabled } }, ConsumedUnits |
             ForEach-Object {
                 [PSCustomObject]@{
@@ -165,67 +323,116 @@ function Get-M365LicenseSummary {
                     'Available' = $_.ActiveUnits - $_.ConsumedUnits
                 } 
             }
-        $tenantLicenses | Select-Object @{Name='Index';Expression={[array]::IndexOf($tenantLicenses, $_) + 1}}, *
+
+        # Sort the entire collection by 'Assigned Role'
+        $tenantLicenses = $tenantLicenses | Sort-Object 'License'
+
+        # Output the sorted results with a row column
+        $tenantLicenses | Select-Object @{Name='Row#';Expression={[array]::IndexOf($tenantLicenses, $_) + 1}}, *
     } catch {
-        Write-Error "Failed to retrieve licenses. $_"
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+    }
+	$lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
     }
 }
 
 # Function to get a list of inactive users (no logins for the past 30 days)
 function Get-InactiveUsers {
-	Connect-MicrosoftGraph
+	# Redirect warnings and errors to variables
+	$ErrorActionPreference = 'Stop'
+	$WarningPreference = 'Continue'
 
-    # Define the time span of inactivity (30 days)
-    $inactiveThreshold = (Get-Date).AddDays(-30)
+	try {
+		Connect-ToMicrosoftGraph
 
-    # Get all users
-    $users = Get-MgUser -All
+    	# Define the time span of inactivity (30 days)
+    	$inactiveThreshold = (Get-Date).AddDays(-30)
 
-    # Retrieve sign-in logs for the past 30 days in one go
-    $signIns = Get-MgAuditLogSignIn -Filter "createdDateTime ge $($inactiveThreshold.ToString('yyyy-MM-ddTHH:mm:ssZ'))" -Top 1000
+    	# Get all users
+    	$users = Get-MgUser -All
 
-    # Initialize an array to hold inactive users
-    $inactiveUsers = @()
+    	# Retrieve sign-in logs for the past 30 days in one go
+    	$signIns = Get-MgAuditLogSignIn -Filter "createdDateTime ge $($inactiveThreshold.ToString('yyyy-MM-ddTHH:mm:ssZ'))" -Top 1000
 
-    # Create a hash table of the most recent sign-in for each user
-    $userSignInMap = @{}
-    foreach ($signIn in $signIns) {
-        $userPrincipalName = $signIn.UserPrincipalName
-        if ($userSignInMap[$userPrincipalName] -lt $signIn.CreatedDateTime) {
-            $userSignInMap[$userPrincipalName] = $signIn.CreatedDateTime
-        }
-    }
+    	# Initialize an array to hold inactive users
+    	$inactiveUsers = @()
 
-    # Determine which users have not signed in within the last 30 days
-    foreach ($user in $users) {
-        $lastSignInDate = $null
-        if ($userSignInMap.ContainsKey($user.UserPrincipalName)) {
-            $lastSignInDate = $userSignInMap[$user.UserPrincipalName]
-        }
+    	# Create a hash table of the most recent sign-in for each user
+    	$userSignInMap = @{}
+    	foreach ($signIn in $signIns) {
+        	$userPrincipalName = $signIn.UserPrincipalName
+        	if ($userSignInMap[$userPrincipalName] -lt $signIn.CreatedDateTime) {
+            	$userSignInMap[$userPrincipalName] = $signIn.CreatedDateTime
+        	}
+    	}
 
-        # If no sign-in or the last sign-in was more than 30 days ago, mark the user as inactive
-        if (-not $lastSignInDate -or $lastSignInDate -lt $inactiveThreshold) {
-            $inactiveUsers += [PSCustomObject]@{
-                DisplayName       = $user.DisplayName
-				UserPrincipalName = $user.UserPrincipalName
-                LastSignInDate    = $lastSignInDate
-            }
-        }
-    }
+    	# Determine which users have not signed in within the last 30 days
+    	foreach ($user in $users) {
+        	$lastSignInDate = $null
+        	if ($userSignInMap.ContainsKey($user.UserPrincipalName)) {
+	            $lastSignInDate = $userSignInMap[$user.UserPrincipalName]
+    	    }
 
-    # Output the inactive users
-    return $inactiveUsers
+        	# If no sign-in or the last sign-in was more than 30 days ago, mark the user as inactive
+        	if (-not $lastSignInDate -or $lastSignInDate -lt $inactiveThreshold) {
+            	$inactiveUsers += [PSCustomObject]@{
+                	DisplayName       = $user.DisplayName
+					UserPrincipalName = $user.UserPrincipalName
+                	LastSignInDate    = $lastSignInDate
+            	}
+        	}
+    	}
+    	# Output the inactive users
+    	return $inactiveUsers
+		
+	} catch {
+		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+	}
+	$lastWarning = $null
+    $lastWarning = $global:LASTWARNING
+    if ($lastWarning) {
+		Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
+	}
 }
 
 # Function to get activity logs
 function Get-ActivityLogs {
+	# Redirect warnings and errors to variables
+	$ErrorActionPreference = 'Stop'
+	$WarningPreference = 'Continue'
+
 	try {
-    	Connect-MicrosoftGraph
+    	Connect-ToMicrosoftGraph
     	$logs = Get-MgAuditLogSignIn -All
-    	$logs | Select-Object @{Name='Index';Expression={[array]::IndexOf($logs, $_) + 1}}, UserPrincipalName, AppDisplayName, ResourceDisplayName, CreatedDateTime
+        # Output the sorted results with a row column
+    	$logs | Select-Object @{Name='Row#';Expression={[array]::IndexOf($logs, $_) + 1}}, UserPrincipalName, AppDisplayName, ResourceDisplayName, CreatedDateTime
 	} catch {
-		Write-Error "Failed to retrieve activity logs. $_"
+		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
 	}
+}
+
+# Function to see if audting is enabled for tenant
+function Get-AuditStatus {    
+    try {
+        Connect-ToExchangeOnline
+        # Get the audit log configuration
+        $auditConfig = Get-AdminAuditLogConfig | Format-List UnifiedAuditLogIngestionEnabled
+
+        if ($auditConfig.UnifiedAuditLogIngestionEnabled -match 'True') {
+            Add-ToInformation -Type 'Information' -Message 'Auditing is enabled in your tenant.' -Function $MyInvocation.MyCommand.Name
+        } else {
+            Add-ToWarningsAndErrors -Type 'Warning' -Message 'Auditing is not enabled in your tenant.' -Function $MyInvocation.MyCommand.Name
+        }
+
+    } catch {
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $MyInvocation.MyCommand.Name
+    } finally {
+        # Disconnect from the Microsoft 365 service
+        Disconnect-ExchangeOnline -Confirm:$false
+    }
 }
 
 # Perform-Audit function
@@ -235,9 +442,10 @@ function Start-Audit {
         $groups = Get-AllGroups
         $privilegedUsers = Get-PrivilegedUsers
         $userLicenses = Get-UserLicenses
-        $tenantLicenses = Get-M365LicenseSummary
+        $tenantLicenses = Get-LicenseSummary
         #$inactiveUsers = Get-InactiveUsers
         #$activityLogs = Get-ActivityLogs
+		$auditStatus = Get-AuditStatus
 
         $users | Out-GridView -Title 'All Users'
         $groups | Out-GridView -Title 'All Groups'
@@ -246,6 +454,7 @@ function Start-Audit {
         $tenantLicenses | Out-GridView -Title 'Tenant Licenses'
         #$inactiveUsers | Out-GridView -Title 'Inactive Users'
         #$activityLogs | Out-GridView -Title 'Activity Logs'
+		$auditStatus
     } catch {
         Write-Error "An error occurred during the audit. $_"
     }
@@ -254,9 +463,15 @@ function Start-Audit {
 # Run the audit
 Start-Audit
 
+# Show informational report
+Show-Information
+
+# Show warnings and errors report
+Show-WarningsAndErrors
+
 # If running in the console, wait for input before closing.
-if ($Host.Name -eq "ConsoleHost")
+if ($Host.Name -eq 'ConsoleHost')
 {
-    Write-Host "Press any key to continue..."
-    $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyUp") > $null
+    Write-Host 'Press any key to continue...'
+    $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
 }
