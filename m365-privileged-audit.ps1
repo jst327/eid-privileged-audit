@@ -499,8 +499,9 @@ function Get-AuditStatus {
 	# Redirect warnings and errors to variables
 	$ErrorActionPreference = 'Stop'
 	$WarningPreference = 'Continue'
-    
+
     try {
+        Write-Log 'Connecting to Exchange Online'
         Connect-ToExchangeOnline
         # Get the audit log configuration
         $auditConfig = Get-AdminAuditLogConfig | Format-List UnifiedAuditLogIngestionEnabled
@@ -524,6 +525,7 @@ function Get-AuditStatus {
 # Perform-Audit function
 function Start-Audit {
     try {
+        Write-Log 'Generating reports...'
         $users = Get-AllUsers
         $groups = Get-AllGroups
         $privilegedUsers = Get-PrivilegedUsers
@@ -554,6 +556,8 @@ Show-Information
 
 # Show warnings and errors report
 Show-WarningsAndErrors
+
+Write-Log 'Script finished'
 
 # If running in the console, wait for input before closing.
 if ($Host.Name -eq 'ConsoleHost')
