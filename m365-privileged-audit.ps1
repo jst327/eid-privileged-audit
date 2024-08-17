@@ -14,15 +14,20 @@ function Test-MicrosoftGraphModule {
     if ($module) {
         Write-Host "Microsoft Graph module is installed." -ForegroundColor Green
     } else {
-        Throw "Microsoft Graph module is not installed. Please install it using 'Install-Module -Name Microsoft.Graph'. The script will now exit."
+        # Output an error and prompt user to press Enter to continue
+        Write-Error "Microsoft Graph module is not installed. Please install it using 'Install-Module -Name Microsoft.Graph'."
+        Write-Host "Press Enter to exit the script." -ForegroundColor Red
+        Read-Host
+        exit
     }
 }
 
-# Run function to see if Microsoft Graph module is installed
+# Example usage
 Test-MicrosoftGraphModule
 
 # Continue with other script tasks if the module is found
 Write-Host "Continuing with the rest of the script..." -ForegroundColor Yellow
+
 
 # Ensure required modules are installed
 #Install-Module Microsoft.Graph -Force -Scope CurrentUser
