@@ -169,7 +169,7 @@ function Connect-ToMicrosoftGraph {
     $WarningPreference = 'Continue'
 
 	try {
-    	Connect-MgGraph -Scopes 'AuditLog.Read.All', 'GroupMember.Read.All', 'Organization.Read.All', 'RoleEligibilitySchedule.Read.Directory', 'RoleManagement.Read.Directory', 'RoleManagement.Read.All', 'User.Read.All' -NoWelcome
+    	Connect-MgGraph -Scopes 'AuditLog.Read.All', 'GroupMember.Read.All', 'Organization.Read.All', 'Policy.Read.All', 'RoleEligibilitySchedule.Read.Directory', 'RoleManagement.Read.Directory', 'RoleManagement.Read.All', 'User.Read.All' -NoWelcome
 	} catch {
 		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
 	}
