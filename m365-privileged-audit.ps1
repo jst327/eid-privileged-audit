@@ -1,4 +1,4 @@
-# Justin Tucker - 2024-08-17
+# Justin Tucker - 2024-09-30
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # - https://github.com/jst327/m365-privileged-audit
 
@@ -7,9 +7,9 @@
 # Requires PowerShell 5.1 or later
 # Request .NET Framework 4.7.2 or later
 
-# Global variables to hold the license data
-#$licenseGUID = $null
-#$licenseString = $null
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
 
 # Function for writing logs
 function Write-Log {
@@ -60,7 +60,7 @@ function Test-MicrosoftGraphModule {
 Test-MicrosoftGraphModule
 
 # Continue with other script tasks if the module is found
-Write-Log 'Continuing with the rest of the script...' -LogLevel TRACE
+Write-Log 'Continuing with rest of the script...' -LogLevel TRACE
 
 # Function to check if Exchange Online module is installed
 function Test-ExchangeOnlineModule {
@@ -84,10 +84,13 @@ function Test-ExchangeOnlineModule {
 Test-ExchangeOnlineModule
 
 # Continue with other script tasks if the module is found
-Write-Log 'Continuing with the rest of the script...' -LogLevel TRACE
+Write-Log 'Continuing with rest of the script...' -LogLevel TRACE
 
 # Global array to store informational events
 $Global:Information = @()
+$global:LASTWARNING = @()
+$global:licenseGUID = @()
+$global:licenseString = @()
 
 # Function to log informational events
 function Add-ToInformation {
@@ -194,16 +197,13 @@ function Connect-ToExchangeOnline {
     $lastWarning = $null
     $lastWarning = $global:LASTWARNING
     if ($lastWarning) {
-        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.name
+        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
     }
 }
 
 # Function to get a list of all users, MFA, and SSPR status
 function Get-AllUsers {
     Write-Log "Starting 'All Users' report."
-    # Redirect warnings and errors to variables
-    $ErrorActionPreference = 'Stop'
-    $WarningPreference = 'Continue'
 	
     try {
 		Connect-ToMicrosoftGraph
@@ -244,33 +244,9 @@ function Get-AllUsers {
     }
 }
 
-# Function to get a list of all groups
-function Get-AllGroups {
-    Write-Log "Starting 'All Groups' report."
-    # Redirect warnings and errors to variables
-    $ErrorActionPreference = 'Stop'
-    $WarningPreference = 'Continue'
-	
-	try {
-    	Connect-ToMicrosoftGraph
-    	$groups = Get-MgGroup -All | Sort-Object DisplayName
-    	$groups | Select-Object @{Name='Row#';Expression={[array]::IndexOf($groups, $_) + 1}}, DisplayName, Mail, Description
-	} catch {
-		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
-	}
-	$lastWarning = $null
-    $lastWarning = $global:LASTWARNING
-    if ($lastWarning) {
-        Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
-    }
-}
-
 # Function to get a list of privileged users
 function Get-PrivilegedUsers {
     Write-Log "Starting 'Privileged Users' report."
-    # Redirect warnings and errors to variables
-    $ErrorActionPreference = 'Stop'
-    $WarningPreference = 'Continue'
 
     try {
         Connect-ToMicrosoftGraph
@@ -307,7 +283,7 @@ function Get-PrivilegedUsers {
         # Output the sorted results with a row column
         $privilegedUsers | Select-Object @{Name='Row#';Expression={[array]::IndexOf($privilegedUsers, $_) + 1}}, *
     } catch {
-        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand
     }
     $lastWarning = $null
     $lastWarning = $global:LASTWARNING
@@ -318,13 +294,9 @@ function Get-PrivilegedUsers {
 
 # Function to hash tables of easy-to-read license display names from GUID or string
 function Get-LicenseNames {
-	# Redirect warnings and errors to variables
-	$ErrorActionPreference = 'Stop'
-	$WarningPreference = 'Continue'
 
     try {
-        $global:licenseGUID = @{}
-        $global:licenseString = @{}
+
         $licenseFilePath = 'https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv'
         [Text.Encoding]::UTF8.GetString((Invoke-WebRequest $licenseFilePath).RawContentStream.ToArray()) | ConvertFrom-CSV `
             | Select-Object Product_Display_Name, String_Id, GUID -Unique `
@@ -352,9 +324,6 @@ function Confirm-LicenseNamesLoaded {
 # Function to get user licenses
 function Get-UserLicenses {
     Write-Log "Starting 'User Licenses' report."
-	# Redirect warnings and errors to variables
-	$ErrorActionPreference = 'Stop'
-	$WarningPreference = 'Continue'
 
     Confirm-LicenseNamesLoaded
 
@@ -384,9 +353,6 @@ function Get-UserLicenses {
 # Function to get a list of M365 licenses
 function Get-LicenseSummary {
     Write-Log "Starting 'Tenant Licenses' report."
-	# Redirect warnings and errors to variables
-	$ErrorActionPreference = 'Stop'
-	$WarningPreference = 'Continue'
 
     Confirm-LicenseNamesLoaded
 
@@ -417,64 +383,76 @@ function Get-LicenseSummary {
     }
 }
 
-# Function to get a list of inactive users (no logins for the past 30 days)
-function Get-InactiveUsers {
-    Write-Log "Starting 'Inactive Users' report."
-	# Redirect warnings and errors to variables
-	$ErrorActionPreference = 'Stop'
-	$WarningPreference = 'Continue'
+function Get-StaleUsers {
+    try {
+        Connect-ToMicrosoftGraph
+        # Initialize a List to store the data
+        $Report = [System.Collections.Generic.List[Object]]::new()
 
-	try {
-		Connect-ToMicrosoftGraph
+        # Get properties
+        $Properties = @(
+            'DisplayName',
+            'Mail',
+            'UserPrincipalName',
+            'UserType',
+            'AccountEnabled',
+            'SignInActivity',
+            'CreatedDateTime',
+            'AssignedLicenses'
+        )
 
-    	# Define the time span of inactivity (30 days)
-    	$inactiveThreshold = (Get-Date).AddDays(-30)
+        # Get all users along with the properties
+        $AllUsers = Get-MgUser -All -Property $Properties | Select-Object $Properties
 
-    	# Get all users
-    	$users = Get-MgUser -All
+        foreach ($User in $AllUsers) {
+            $LastSuccessfulSignInDate = if ($User.SignInActivity.LastSuccessfulSignInDateTime) {
+                $User.SignInActivity.LastSuccessfulSignInDateTime
+            } else {
+                "Never Signed-in."
+            }
 
-    	# Retrieve sign-in logs for the past 30 days in one go
-    	$signIns = Get-MgAuditLogSignIn -Filter "createdDateTime ge $($inactiveThreshold.ToString('yyyy-MM-ddTHH:mm:ssZ'))" -Top 1000
+            $DaysSinceLastSignIn = if ($User.SignInActivity.LastSuccessfulSignInDateTime) {
+                (New-TimeSpan -Start $User.SignInActivity.LastSuccessfulSignInDateTime -End (Get-Date)).Days
+            } else {
+                "N/A"
+            }
 
-    	# Initialize an array to hold inactive users
-    	$inactiveUsers = @()
+            # Check if the user is licensed
+            $IsLicensed = if ($User.AssignedLicenses) {
+                "Yes"
+            } else {
+                "No"
+            }
 
-    	# Create a hash table of the most recent sign-in for each user
-    	$userSignInMap = @{}
-    	foreach ($signIn in $signIns) {
-        	$userPrincipalName = $signIn.UserPrincipalName
-        	if ($userSignInMap[$userPrincipalName] -lt $signIn.CreatedDateTime) {
-            	$userSignInMap[$userPrincipalName] = $signIn.CreatedDateTime
-        	}
-    	}
+            # Collect data and add to report only if DaysSinceLastSignIn is greater than or equal to 30
+            if (!$User.SignInActivity.LastSuccessfulSignInDateTime -or (Get-Date $User.SignInActivity.LastSuccessfulSignInDateTime)) {
+                if ($DaysSinceLastSignIn -ge 30) {
+                    $ReportLine = [PSCustomObject]@{
+                        DisplayName                 = $User.DisplayName
+                        UserPrincipalName           = $User.UserPrincipalName                                  
+                        CreatedDateTime             = $User.CreatedDateTime
+                        LastSuccessfulSignInDate    = $LastSuccessfulSignInDate
+                        DaysSinceLastSignIn         = $DaysSinceLastSignIn
+                        AccountEnabled              = $User.AccountEnabled
+                        IsLicensed                  = $IsLicensed
+                        UserType                    = $User.UserType
+                    }
+                    # Add the report line to the List
+                    $Report.Add($ReportLine)
+                    Add-ToWarningsAndErrors -Type 'Warning' -Message 'Stale users found.'
+                } else {
+                    Add-ToInformation -Type 'Info' -Message 'No stale users found.'
+                }
+            }
+        }
+        # Display data by DaysSinceLastSignIn Descending
+        $Report = $Report | Sort-Object -Property DaysSinceLastSignIn -Descending
+        # Output the sorted results with a row column
+        $Report | Select-Object @{Name='Row#';Expression={[array]::IndexOf($Report, $_) + 1}}, *
+    } catch{
+        Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
+    }
 
-    	# Determine which users have not signed in within the last 30 days
-    	foreach ($user in $users) {
-        	$lastSignInDate = $null
-        	if ($userSignInMap.ContainsKey($user.UserPrincipalName)) {
-	            $lastSignInDate = $userSignInMap[$user.UserPrincipalName]
-    	    }
-
-        	# If no sign-in or the last sign-in was more than 30 days ago, mark the user as inactive
-        	if (-not $lastSignInDate -or $lastSignInDate -lt $inactiveThreshold) {
-            	$inactiveUsers += [PSCustomObject]@{
-                	DisplayName       = $user.DisplayName
-					UserPrincipalName = $user.UserPrincipalName
-                	LastSignInDate    = $lastSignInDate
-            	}
-        	}
-    	}
-    	# Output the inactive users
-    	return $inactiveUsers
-		
-	} catch {
-		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
-	}
-	$lastWarning = $null
-    $lastWarning = $global:LASTWARNING
-    if ($lastWarning) {
-		Add-ToWarningsAndErrors -Type 'Warning' -Message $lastWarning.Message -Function $lastWarning.InvocationInfo.MyCommand.Name
-	}
 }
 
 # Function to get activity logs
@@ -492,6 +470,11 @@ function Get-ActivityLogs {
 	} catch {
 		Add-ToWarningsAndErrors -Type 'Error' -Message $_.Exception.Message -Function $_.InvocationInfo.MyCommand.Name
 	}
+}
+
+# Function to see if security defaults are enabled
+function Test-SecurityDefaults {
+
 }
 
 # Function to see if audting is enabled for tenant
@@ -586,22 +569,20 @@ function Test-SharedMailboxSignInAllowed {
 function Start-Audit {
     try {
         Write-Log 'Starting audit...'
-        $users = Get-AllUsers
-        $groups = Get-AllGroups
-        $privilegedUsers = Get-PrivilegedUsers
-        $userLicenses = Get-UserLicenses
-        $tenantLicenses = Get-LicenseSummary
-        #$inactiveUsers = Get-InactiveUsers
+        $users = Get-AllUsers #in new script
+        $privilegedUsers = Get-PrivilegedUsers #in new script
+        $userLicenses = Get-UserLicenses #in new script
+        $tenantLicenses = Get-LicenseSummary #in new script
+        $staleUsers = Get-StaleUsers #in new script
         #$activityLogs = Get-ActivityLogs
 		$auditStatus = Test-AuditStatus
 		$sharedMailbox = Test-SharedMailboxSignInAllowed
 
         $users | Out-GridView -Title 'All Users'
-        $groups | Out-GridView -Title 'All Groups'
         $privilegedUsers | Out-GridView -Title 'Privileged Users'
         $userLicenses | Out-GridView -Title 'User Licenses'
         $tenantLicenses | Out-GridView -Title 'Tenant Licenses'
-        #$inactiveUsers | Out-GridView -Title 'Inactive Users'
+        $staleUsers | Out-GridView -Title 'Stale Users'
         #$activityLogs | Out-GridView -Title 'Activity Logs'
 		$auditStatus
 		$sharedMailbox | Out-GridView -Title 'Shared Mailbox Sign-In'

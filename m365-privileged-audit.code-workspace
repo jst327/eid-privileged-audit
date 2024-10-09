@@ -1,0 +1,23 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"files.problemsExclude": [
+		"**\\WindowsPowerShell\\Modules\\Pester\\**"
+	],
+	"extensions": {
+		"recommendations": [
+			"ms-vscode.powershell",
+			"davidanson.vscode-markdownlint",
+			"bierner.markdown-preview-github-styles",
+			"pspester.pester-test",
+			"ryanluker.vscode-coverage-gutters"
+		]
+	},
+	"settings": {
+		"files.trimTrailingWhitespace": true,
+		"files.trimFinalNewlines": true
+	}
+}
