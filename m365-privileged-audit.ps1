@@ -1,14 +1,10 @@
-# Justin Tucker - 2024-10-17
+# Justin Tucker - 2024-10-18
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
 # Requires PowerShell 5.1 or later
 # Requires Microsoft Graph PowerShell Module
 # Requires Exchange Online PowerShell Module
-
-#### TO-DO
-# 1. Privileged Group separate from priv users
-# 2. Issues with duplicates in shared mailbox report
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -322,30 +318,82 @@ function Get-PrivilegedUsers {
 }
 
 function Get-PrivilegedGroups {
-    Write-Log -Message "Starting 'Privileged Groups' report."
+    Write-Log "Starting 'Privileged Groups' report."
     Connect-MicrosoftGraph
     try {
-        $roles = Get-MgDirectoryRole
-        if (-not $roles) {
-            Write-Log -Message 'No roles found in this tenant.' -Severity WARN
-        }
-    } catch {
-        Write-Log -Message 'Error fetching roles.' -Severity ERROR
-    }
-    try {
-        $roleCount = @{}
-        foreach ($role in $roles) {
+        $assignedRoles = Get-MgRoleManagementDirectoryRoleAssignmentSchedule -All
+        $eligibleRoles = Get-MgRoleManagementDirectoryRoleEligibilitySchedule -All
+        $roleCounts = @{}
+
+        foreach ($assignment in $assignedRoles) {
             try {
-                $members = Get-MgDirectoryRoleMember -DirectoryRoleId $role.Id
-                $count = $members.Count
-                $roleCount[$role.DisplayName] = $count
+                if ($null -ne $assignment.RoleDefinitionId) {
+                    try {
+                        $role = Get-MgRoleManagementDirectoryRoleDefinition -All | Where-Object { $_.Id -eq $assignment.RoleDefinitionId }
+                    } catch {
+                        Write-Log -Message "Error retrieving assigned role for RoleDefinitionId: $($assignment.RoleDefinitionId). Error: $_" -Severity WARN
+                        continue
+                    }
+                } else {
+                    Write-Log -Message 'RoleDefinitionId missing for assigned role.' -Severity WARN
+                    continue
+                }
+
+                if ($null -ne $role) {
+                    if (-not $roleCounts.ContainsKey($role.DisplayName)) {
+                        $roleCounts[$role.DisplayName] = @{
+                            'Assigned#' = 0
+                            'Eligible#' = 0
+                        }
+                    }
+                    $roleCounts[$role.DisplayName]['Assigned#'] += 1
+                }
             } catch {
-                Write-Log -Message "Error retrieving members for the role $($role.DisplayName): $_"
+                Write-Log -Message "Error processing assigned role $($assignment.Id): $_" -Severity WARN
             }
         }
 
+        foreach ($eligible in $eligibleRoles) {
+            try {
+                if ($null -ne $eligible.RoleDefinitionId) {
+                    try {
+                        $role = Get-MgRoleManagementDirectoryRoleDefinition -All | Where-Object { $_.Id -eq $eligible.RoleDefinitionId }
+                    } catch {
+                        Write-Log -Message "Error retrieving eligible role for RoleDefinitionId: $($eligible.RoleDefinitionId). Error: $_" -Severity WARN
+                        continue
+                    }
+                } else {
+                    Write-Log -Message 'RoleDefinitionId missing for eligible role.' -Severity WARN
+                    continue
+                }
+
+                if ($null -ne $role) {
+                    if (-not $roleCounts.ContainsKey($role.DisplayName)) {
+                        $roleCounts[$role.DisplayName] = @{
+                            'Assigned#' = 0
+                            'Eligible#' = 0
+                        }
+                    }
+                    $roleCounts[$role.DisplayName]['Eligible#'] += 1
+                }
+            } catch {
+                Write-Log -Message "Error processing eligible role $($eligible.Id): $_" -Severity WARN
+            }
+        }
+
+        $privilegedGroups = $roleCounts.GetEnumerator() | ForEach-Object {
+            [PSCustomObject]@{
+                'RoleName'  = $_.Key
+                'Assigned#' = $_.Value['Assigned#']
+                'Eligible#' = $_.Value['Eligible#']
+            }
+        }
+
+        $privilegedGroups = $privilegedGroups | Sort-Object @{Expression={if ($_.RoleName -eq 'Global Administrator') {0} else {1}}}, RoleName
+        $privilegedGroups | Select-Object @{Name='Row#';Expression={[array]::IndexOf($privilegedGroups, $_) + 1}}, *
+
     } catch {
-        Write-Log -Message "Error creating 'Privileged Groups' report." -Severity ERROR
+        Write-Log -Message "$_ Error creating 'Privileged Groups' report." -Severity ERROR
     }
 }
 
@@ -497,37 +545,39 @@ function Test-AuditStatus {
 
 function Test-SharedMailboxSignInAllowed {
     Write-Log -Message "Starting 'Shared Mailbox Sign-In Allowed' report."
-    try {
-        $mailboxStatusList = [System.Collections.Generic.List[Object]]::new()
-        $sharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox | Select-Object Name, UserPrincipalName
-        $accountEnabled = Get-MgUser -Filter 'accountEnabled eq true' -Select UserPrincipalName
-        $accountDisabled = Get-MgUser -Filter 'accountEnabled eq false' -Select UserPrincipalName
-        foreach ($mailbox in $sharedMailboxes) {
-            $isEnabled = $accountEnabled.UserPrincipalName -contains $mailbox.UserPrincipalName
-            $isDisabled = $accountDisabled.UserPrincipalName -contains $mailbox.UserPrincipalName
-            $status = if ($isEnabled) {
-                'Enabled'
-            } elseif ($isDisabled) {
-                'Disabled'
-            } else {
-                'Unknown'
-            }
-            if ($isEnabled) {
-                $obj = [PSCustomObject]@{
-                    'Name' = $mailbox.Name
-                    'userPrincipalName' = $mailbox.UserPrincipalName
-                    'AccountStatus' = $status
+    Connect-MicrosoftGraph -Scopes "User.Read.All"
+
+    $sharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox
+    $enabledMailboxes = [System.Collections.Generic.List[Object]]::new()
+
+    foreach ($mailbox in $sharedMailboxes) {
+        try {
+            $enabledUsers = $null
+
+            if ($null -ne $mailbox.userPrincipalName) {
+                try {
+                    $enabledUsers = Get-MgUser -Filter 'accountEnabled eq true' | Where-Object {$_.UserPrincipalName -eq $mailbox.UserPrincipalName}
+                } catch {
+                    Write-Log -Message "Error retrieving user $($mailbox.userPrincipalName). Error: $_" -Severity WARN
                 }
-                Write-Log -Message "The shared mailbox account for '$($mailbox.UserPrincipalName)' is enabled." -Severity WARN
-                Add-ToWarningsAndErrors -Type 'Warning' -Message "The shared mailbox account for '$($mailbox.UserPrincipalName)' is enabled." -Function 'Shared Mailbox Sign-In Allowed'
             }
-            $mailboxStatusList.Add($obj)
+
+            if ($null -ne $enabledUsers) {
+                $enabledMailboxes += [PSCustomObject]@{
+                    'Name'              = $enabledUsers.DisplayName
+                    'userPrincipalName' = $enabledUsers.UserPrincipalName
+                    'Sign-In'           = 'Enabled'
+                }
+                Write-Log -Message "The shared mailbox account for $($mailbox.UserPrincipalName) is enabled." -Severity WARN
+                Add-ToWarningsAndErrors -Type 'Warning' -Message "The shared mailbox account for $($mailbox.UserPrincipalName) is enabled." -Function 'Shared Mailbox Sign-In Allowed'
+            }
+        } catch {
+
         }
-        $mailboxStatusList = $mailboxStatusList | Sort-Object 'Name'
-        $mailboxStatusList | Select-Object @{Name='Row#';Expression={[array]::IndexOf($mailboxStatusList, $_) + 1}}, *
-    } catch {
-        Write-Log -Message "Error running 'Shared Mailbox Sign-In Allowed' report." -Severity ERROR
     }
+
+    $enabledMailboxes = $enabledMailboxes | Sort-Object 'DisplayName'
+    $enabledMailboxes | Select-Object @{Name='Row#';Expression={[array]::IndexOf($enabledMailboxes, $_) + 1}}, *
 }
 
 function Start-Audit {
