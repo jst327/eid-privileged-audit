@@ -1,10 +1,15 @@
-# Justin Tucker - 2024-10-18
+# Justin Tucker - 2024-10-21
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
 # Requires PowerShell 5.1 or later
 # Requires Microsoft Graph PowerShell Module
 # Requires Exchange Online PowerShell Module
+
+## TO DO
+# 1. Risky detections report
+# 2. Risky users report
+# 3. Risky sign-ins report
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -520,7 +525,7 @@ function Get-TenantLicenses {
 
 function Connect-ToExchangeOnline {
     try {
-        Connect-ExchangeOnline -ShowProgress $false
+        Connect-ExchangeOnline -ShowBanner:$false
     } catch {
         Write-Log -Message 'Error connecting to Exchange Online' -Severity ERROR
         Add-ToWarningsAndErrors -Type Error -Message 'Error connecting to Exchange Online' -Function 'Connect to Exchange Online'
