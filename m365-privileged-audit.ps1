@@ -1,4 +1,4 @@
-# Justin Tucker - 2024-10-21
+# Justin Tucker - 2024-11-06
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
@@ -121,9 +121,9 @@ Test-ExchangeOnlineModule
 
 function Connect-MicrosoftGraph {
 	try {
-    	Connect-MgGraph -Scope RoleManagement.Read.Directory -NoWelcome
+    	Connect-MgGraph -Scope "User.Read.All", "AuditLog.Read.All", "RoleManagement.Read.Directory", "AdministrativeUnit.Read.All", "RoleAssignmentSchedule.Read.Directory", "RoleEligibilitySchedule.Read.Directory", "Application.Read.All" -NoWelcome
 	} catch {
-		Write-Log -Message 'Unable to connect to Microsoft Graph.' -Severity ERROR
+		Write-Log -Message "Unable to connect to Microsoft Graph. Error: $_" -Severity ERROR
 	}
 }
 
@@ -152,7 +152,7 @@ function Get-AllUsers {
 		}
         $allUsers | Select-Object @{Name='Row#';Expression={[array]::IndexOf($allUsers, $_) + 1}}, *
 	} catch {
-        Write-Log -Message "Error creating 'All Users report." -Severity ERROR
+        Write-Log -Message "Error creating 'All Users report. Error: $_" -Severity ERROR
     }
 }
 
