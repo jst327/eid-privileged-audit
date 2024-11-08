@@ -12,8 +12,7 @@
 # 3. Risky sign-ins report
 # 4. Enterprise App permisions
 # 5. SharePoint permissions
-# 6. User license tweak (unique per row)
-# 7. CSV and history report
+# 6. CSV and history report
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
