@@ -127,6 +127,7 @@ function Connect-MicrosoftGraph {
 	try {
 		Connect-MgGraph -Scope `
 				'User.Read.All', `
+				'Directory.Read.All', `
 				'AuditLog.Read.All', `
 				'RoleManagement.Read.Directory', `
 				'AdministrativeUnit.Read.All', `
@@ -502,18 +503,21 @@ function Get-UserLicenses {
 		$licensedUsers = [System.Collections.Generic.List[Object]]::new()
 		$users = Get-MgUser -Filter 'assignedLicenses/$count ne 0' -ConsistencyLevel eventual -CountVariable licensedUserCount -All -Select UserPrincipalName,DisplayName,AssignedLicenses | Sort-Object DisplayName
 		foreach ($user in $users) {
-			$obj = [PSCustomObject]@{
-				'UserPrincipalName' = $user.UserPrincipalName
-				'DisplayName' = $user.DisplayName
-				'Licenses' = $user.AssignedLicenses | ForEach-Object { $Global:licenseGUID[$_.SkuId] }
+			foreach ($license in $user.AssignedLicenses) {
+				$obj = [PSCustomObject]@{
+					'UserPrincipalName' = $user.UserPrincipalName
+					'DisplayName' = $user.DisplayName
+					'License' = $Global:licenseGUID[$license.SkuId]
+				}
+				$licensedUsers.Add($obj)
 			}
-			$licensedUsers.Add($obj)
 		}
 		$licensedUsers | Select-Object @{Name='Row#';Expression={[array]::IndexOf($licensedUsers, $_) + 1}}, *
 	} catch {
 		Write-Log -Message "Error creating 'User Licenses' report. Error: $_" -Severity ERROR
 	}
 }
+
 
 function Get-TenantLicenses {
 	Write-Log 'Starting ''Tenant Licenses'' report.'
@@ -531,7 +535,7 @@ function Get-TenantLicenses {
 		}
 		$tenantLicenses | Select-Object @{Name='Row#';Expression={[array]::IndexOf($tenantLicenses, $_) + 1}}, *
 	} catch {
-		Write-Log -Message "Error creating 'Tenant Licenses' report. Error: $_"
+		Write-Log -Message "Error creating 'Tenant Licenses' report. Error: $_" -Severity ERROR
 	}
 }
 
