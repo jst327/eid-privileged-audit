@@ -1,4 +1,4 @@
-# Justin Tucker - 2024-11-07
+# Justin Tucker - 2024-11-11
 # SPDX-FileCopyrightText: Copyright © 2024, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
@@ -419,7 +419,7 @@ function Get-StaleUsers {
 	Connect-MicrosoftGraph
 	try {
 		$staleUsers = [System.Collections.Generic.List[Object]]::new()
-		$Properties = @(
+		$properties = @(
 			'DisplayName',
 			'Mail',
 			'UserPrincipalName',
@@ -429,19 +429,19 @@ function Get-StaleUsers {
 			'CreatedDateTime',
 			'AssignedLicenses'
 		)
-		$allUsers = Get-MgUser -All -Property $Properties | Select-Object $Properties
+		$allUsers = Get-MgUser -All -Property $properties | Select-Object $properties
 		foreach ($user in $allUsers) {
-			$LastSuccessfulSignInDate = if ($User.SignInActivity.LastSuccessfulSignInDateTime) {
-				$User.SignInActivity.LastSuccessfulSignInDateTime
+			$LastSuccessfulSignInDate = if ($user.SignInActivity.LastSuccessfulSignInDateTime) {
+				$user.SignInActivity.LastSuccessfulSignInDateTime
 			} else {
 				'Never Signed-in.'
 			}
-			$DaysSinceLastSignIn = if ($User.SignInActivity.LastSuccessfulSignInDateTime) {
-				(New-TimeSpan -Start $User.SignInActivity.LastSuccessfulSignInDateTime -End (Get-Date)).Days
+			$DaysSinceLastSignIn = if ($user.SignInActivity.LastSuccessfulSignInDateTime) {
+				(New-TimeSpan -Start $user.SignInActivity.LastSuccessfulSignInDateTime -End (Get-Date)).Days
 			} else {
 				'N/A'
 			}
-			$IsLicensed = if ($User.AssignedLicenses) {
+			$isLicensed = if ($user.AssignedLicenses) {
 				'Yes'
 			} else {
 				'No'
@@ -449,14 +449,14 @@ function Get-StaleUsers {
 			if (!$user.SignInActivity.LastSuccessfulSignInDateTime -or (Get-Date $user.SignInActivity.LastSuccessfulSignInDateTime)) {
 				if ($DaysSinceLastSignIn -ge 30) {
 					$obj = [PSCustomObject]@{
-						'DisplayName' = $User.DisplayName
-						'UserPrincipalName' = $User.UserPrincipalName
-						'CreatedDateTime' = $User.CreatedDateTime
+						'DisplayName' = $user.DisplayName
+						'UserPrincipalName' = $user.UserPrincipalName
+						'CreatedDateTime' = $user.CreatedDateTime
 						'LastSuccessfulSignInDate' = $LastSuccessfulSignInDate
 						'DaysSinceLastSignIn' = $DaysSinceLastSignIn
-						'AccountEnabled' = $User.AccountEnabled
-						'IsLicensed' = $IsLicensed
-						'UserType' = $User.UserType
+						'AccountEnabled' = $user.AccountEnabled
+						'IsLicensed' = $isLicensed
+						'UserType' = $user.UserType
 					}
 					$staleUsers.Add($obj)
 				}
@@ -473,6 +473,68 @@ function Get-StaleUsers {
 		$staleUsers | Select-Object @{Name='Row#';Expression={[array]::IndexOf($staleUsers, $_) + 1}}, *
 	} catch {
 		Write-Log -Message "Error creating 'Stale Users' report. Error: $_" -Severity ERROR
+	}
+}
+
+function Get-StalePasswords {
+	Write-Log -Message 'Starting ''Stale Passwords'' report.'
+	Connect-MicrosoftGraph
+	try {
+		$stalePasswords = [System.Collections.Generic.List[Object]]::new()
+		$properties = @(
+			'DisplayName',
+			'Mail',
+			'UserPrincipalName',
+			'UserType',
+			'AccountEnabled',
+			'LastPasswordChangeDateTime'
+			'CreatedDateTime',
+			'AssignedLicenses'
+		)
+		$allUsers = Get-MgUser -All -Property $properties | Select-Object $properties
+		foreach ($user in $allUsers) {
+			$LastPasswordChangeDateTime = if ($user.LastPasswordChangeDateTime) {
+				$user.LastPasswordChangeDateTime
+			} else {
+				'Never Signed-in.'
+			}
+			$DaysSinceLastPasswordChange = if ($user.LastPasswordChangeDateTime) {
+				(New-TimeSpan -Start $user.LastPasswordChangeDateTime -End (Get-Date)).Days
+			} else {
+				'N/A'
+			}
+			$isLicensed = if ($user.AssignedLicenses) {
+				'Yes'
+			} else {
+				'No'
+			}
+			if (!$user.LastPasswordChangeDateTime -or (Get-Date $user.LastPasswordChangeDateTime)) {
+				if ($DaysSinceLastPasswordChange -ge 30) {
+					$obj = [PSCustomObject]@{
+						'DisplayName' = $user.DisplayName
+						'UserPrincipalName' = $user.UserPrincipalName
+						'CreatedDateTime' = $user.CreatedDateTime
+						'LastPasswordChangeDateTime' = $LastPasswordChangeDateTime
+						'DaysSinceLastPasswordChange' = $DaysSinceLastPasswordChange
+						'AccountEnabled' = $user.AccountEnabled
+						'IsLicensed' = $isLicensed
+						'UserType' = $user.UserType
+					}
+					$stalePasswords.Add($obj)
+				}
+			}
+		}
+
+		if ($stalePasswords.Count -gt 0) {
+			Write-Log -Message 'Stale passwords found.' -Severity WARN
+			Add-ToWarningsAndErrors -Type 'Warning' -Message 'Stale passwords found.' -Function 'Stale Passwords'
+		} else {
+			Write-Log -Message 'No stale passwords found.' -Severity INFO
+		}
+		$stalePasswords = $stalePasswords | Sort-Object -Property DaysSinceLastPasswordChange -Descending
+		$stalePasswords | Select-Object @{Name='Row#';Expression={[array]::IndexOf($stalePasswords, $_) + 1}}, *
+	} catch {
+		Write-Log -Message "Error creating 'Stale Passwords' report. Error: $_" -Severity ERROR
 	}
 }
 
@@ -605,6 +667,7 @@ function Start-Audit {
 	$privUsers = Get-PrivilegedUsers
 	$privGroups = Get-PrivilegedGroups
 	$staleUsers = Get-StaleUsers
+	$stalePasswords = Get-StalePasswords
 	$licensedUsers = Get-UserLicenses
 	$tenantLicenses = Get-TenantLicenses
 	$auditStatus = Test-AuditStatus
@@ -614,6 +677,7 @@ function Start-Audit {
 	$privUsers | Out-GridView -Title 'Privileged Users'
 	$privGroups | Out-GridView -Title 'Privileged Groups'
 	$staleUsers | Out-GridView -Title 'Stale Users'
+	$stalePasswords | Out-GridView -Title 'Stale Passwords'
 	$licensedUsers | Out-GridView -Title 'User Licenses'
 	$tenantLicenses | Out-GridView -Title 'Tenant Licenses'
 	$auditStatus
