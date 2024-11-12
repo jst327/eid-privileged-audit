@@ -509,7 +509,7 @@ function Get-StalePasswords {
 				'No'
 			}
 			if (!$user.LastPasswordChangeDateTime -or (Get-Date $user.LastPasswordChangeDateTime)) {
-				if ($DaysSinceLastPasswordChange -ge 30) {
+				if ($DaysSinceLastPasswordChange -ge 365) {
 					$obj = [PSCustomObject]@{
 						'DisplayName' = $user.DisplayName
 						'UserPrincipalName' = $user.UserPrincipalName
@@ -673,7 +673,7 @@ function Start-Audit {
 	$auditStatus = Test-AuditStatus
 	$sharedMailbox = Test-SharedMailboxSignInAllowed
 
-	$allUsers | Out-GridView -Title 'All Users'
+	$allUsers | Out-GridView -Title 'User Registration Details'
 	$privUsers | Out-GridView -Title 'Privileged Users'
 	$privGroups | Out-GridView -Title 'Privileged Groups'
 	$staleUsers | Out-GridView -Title 'Stale Users'
