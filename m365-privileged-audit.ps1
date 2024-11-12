@@ -6,14 +6,6 @@
 # Requires Microsoft Graph PowerShell Module
 # Requires Exchange Online PowerShell Module
 
-## TO DO
-# 1. Risky detections report
-# 2. Risky users report
-# 3. Risky sign-ins report
-# 4. Enterprise App permisions
-# 5. SharePoint permissions
-# 6. CSV and history report
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
@@ -85,7 +77,7 @@ function Show-WarningsAndErrors {
 			'Message'   = 'No warnings or errors to report.'
 		}
 	}
-	$Global:WarningsAndErrors | Out-GridView -Title 'Warnings and Errors Report'
+	$Global:WarningsAndErrors | Out-GridView -Title 'Warnings and Errors'
 }
 
 function Test-MicrosoftGraphModule {
@@ -589,8 +581,8 @@ function Get-TenantLicenses {
 		ForEach-Object {
 			[PSCustomObject]@{
 				'License' = $Global:licenseString.($_.SkuPartNumber)
-				'In Use' = $_.ConsumedUnits
 				'Total' = $_.ActiveUnits
+				'In Use' = $_.ConsumedUnits
 				'Available' = $_.ActiveUnits - $_.ConsumedUnits
 			}
 		}
@@ -692,6 +684,6 @@ Write-Log -Message 'Script finished!' -Severity INFO
 
 if ($Host.Name -eq 'ConsoleHost')
 {
-	Write-Log 'Press any key to continuee...'
+	Write-Log 'Press any key to continue...'
 	$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
 }
