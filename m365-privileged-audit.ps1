@@ -89,8 +89,7 @@ function Test-MicrosoftGraphModule {
 	} else {
 		Write-Log 'Microsoft Graph module is not installed.' -Severity ERROR
 		Write-Log 'Please install it using ''Install-Module -Name Microsoft.Graph''.' -Severity ERROR
-		Write-Log 'Press any key to exit the script.' -Severity ERROR
-		$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
+		Pause
 		exit
 	}
 }
@@ -106,8 +105,7 @@ function Test-ExchangeOnlineModule {
 	} else {
 		Write-Log 'Exchange Online module is not installed.' -Severity ERROR
 		Write-Log 'Please install it using ''Install-Module -Name ExchangeOnlineManagement''.' -Severity ERROR
-		Write-Log 'Press any key to exit the script.' -Severity ERROR
-		$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
+		Pause
 		exit
 	}
 }
@@ -684,6 +682,6 @@ Write-Log -Message 'Script finished!' -Severity INFO
 
 if ($Host.Name -eq 'ConsoleHost')
 {
-	Write-Log 'Press any key to continue...'
-	$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyUp') > $null
+	Pause
+	exit
 }
