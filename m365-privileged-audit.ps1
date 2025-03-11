@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-01-12
+# Justin Tucker - 2025-01-01, 2025-03-10
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
@@ -17,7 +17,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-01-12'
+$version = '2025-03-10'
 $warnings = [System.Collections.ArrayList]::new()
 $m365ConnectParams = @{}
 
