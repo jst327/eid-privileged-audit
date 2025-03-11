@@ -1115,6 +1115,13 @@ function Test-PrivilegedUsers($ctx) {
 					if ($principalId -in $allUserIds) {
 						$principal = Get-MgUser -UserId $principalId
 						$principalName = $principal.UserPrincipalName
+						$user = Get-MgUser -UserId $principalId -Property DisplayName, UserPrincipalName, CreatedDateTime, SignInActivity, LastPasswordChangeDateTime
+						if ($null -ne $user -and $null -ne $user.SignInActivity.LastSuccessfulSignInDateTime) {
+							$LastSuccessfulSignInDateTime = $user.SignInActivity.LastSuccessfulSignInDateTime
+							$DaysSinceLastSignIn = (Get-Date).Subtract($LastSuccessfulSignInDateTime).Days
+						} else {
+							$DaysSinceLastSignIn = $null
+						}
 						if ($null -ne $roleDefinitionId) {
 							try {
 								$role = Get-MgRoleManagementDirectoryRoleDefinition -All | Where-Object { $_.Id -eq $assignment.RoleDefinitionId }
@@ -1139,6 +1146,8 @@ function Test-PrivilegedUsers($ctx) {
 					} else {
 						$directoryScopeName = '/'
 						$principal = Get-MgServicePrincipal -ServicePrincipalId $principalId
+						$user = $null
+						$DaysSinceLastSignIn = $null
 						$roleType = $principal.ServicePrincipalType
 						$principalName = $principal.DisplayName
 						if ($null -ne $assignment.RoleDefinitionId) {
@@ -1166,7 +1175,11 @@ function Test-PrivilegedUsers($ctx) {
 					return [PSCustomObject]@{
 						'RoleName' = $role.DisplayName
 						'DisplayName' = $principal.DisplayName
-						'userPrincipalName' = $principalName
+						'UserPrincipalName' = $principalName
+						'CreatedDateTime' = if($null -ne $user) {$user.CreatedDateTime} else {$null}
+						'LastSuccessfulSignInDateTime' = if($null -ne $user) {$user.SignInActivity.LastSuccessfulSignInDateTime} else {$null}
+						'DaysSinceLastSignIn' = $DaysSinceLastSignIn
+						'LastPasswordChangeDateTime' = if($null -ne $user) {$user.LastPasswordChangeDateTime} else {$null}
 						'IsBuiltIn' = $role.IsBuiltIn
 						'RoleType' = $RoleType
 						'DirectoryScope' = $directoryScopeName
@@ -1215,263 +1228,6 @@ function Test-PrivilegedUsers($ctx) {
 		$privilegedUsers | ConvertTo-M365PrivRows
 	}
 }
-
-# function Test-PrivilegedUsers($ctx) {
-# 	New-M365PrivReport -ctx $ctx -name 'privUsers' -title 'Privileged Users' -dataSource {
-# 		try {
-# 			$privilegedUsers = @()
-# 			$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
-# 			$allUserIds = (Get-MgUser -All).Id
-
-# 			if ($servicePlans -contains 'AAD_PREMIUM_P2') {
-# 				foreach ($assignment in Get-MgRoleManagementDirectoryRoleAssignment -All) {
-# 					$createdDateTime = $null
-# 					try {
-# 						$assignmentSchedule = Get-MgRoleManagementDirectoryRoleAssignmentSchedule -All
-# 						foreach ($activeRole in $assignment) {
-# 							$matchedRole = $assignmentSchedule | Where-Object {
-# 								$_.PrincipalId -eq $activeRole.PrincipalId -and
-# 								$_.RoleDefinitionId -eq $activeRole.RoleDefinitionId
-# 							}
-# 						}
-# 						if ($null -ne $matchedRole.CreatedDateTime) {
-# 							$createdDateTime = $matchedRole.CreatedDateTime
-# 						} else {
-# 							$createdDateTime = $null
-# 						}
-
-# 						if ($null -ne $assignment.PrincipalId) {
-# 							try {
-# 								if ($assignment.PrincipalId -in $allUserIds) {
-# 									$principal = Get-MgUser -UserId $assignment.PrincipalId
-# 									if ($null -ne $principal.UserPrincipalName) {
-# 										$principalName = $principal.UserPrincipalName
-# 									} else {
-# 										$principalName = $principal.DisplayName
-# 									}
-# 									if ($null -ne $assignment.RoleDefinitionId) {
-# 										try {
-# 											$role = Get-MgRoleManagementDirectoryRoleDefinition -All | Where-Object { $_.Id -eq $assignment.RoleDefinitionId }
-# 										} catch {
-# 											Write-Log -Message "Error retrieving assigned role for RoleDefinitionId: $($assignment.RoleDefinitionId). Error: $_" -Severity WARN
-# 											continue
-# 										}
-# 									} else {
-# 										Write-Log -Message 'RoleDefinitionId missing for assigned role.' -Severity WARN
-# 									}
-# 									if ($null -ne $assignment.DirectoryScopeId) {
-# 										try {
-# 											$cleanDirectoryScopeId = $assignment.DirectoryScopeId -replace '/administrativeUnits/', ''
-# 											$directoryScope = Get-MgDirectoryAdministrativeUnit -All | Where-Object { $_.Id -eq $cleanDirectoryScopeId }
-# 											$directoryScopeName = $directoryScope.DisplayName
-# 										} catch {
-# 											$directoryScopeName = '/'
-# 										}
-# 									} else {
-# 										Write-Log -Message "Error retrieving directory scope name for DirectoryScopeId: $($cleanDirectoryScopeId). Error: $_" -Severity WARN
-# 									}
-
-# 									$privilegedUsers += [PSCustomObject]@{
-# 											'RoleName' = $role.DisplayName
-# 											'DisplayName' = $principal.DisplayName
-# 											'userPrincipalName' = $principalName
-# 											'isBuiltIn' = $role.IsBuiltIn
-# 											'RoleType' = 'Assigned'
-# 											'DirectoryScope' = $directoryScopeName
-# 											'IsActivated' = 'True'
-# 											'Created Date (UTC)' = $createdDateTime
-# 											'Expiration type' = $matchedRole.ScheduleInfo.Expiration.type
-# 											'Expiration Date (UTC)' = if ($matchedRole.ScheduleInfo.Expiration.EndDateTime -match '20') {
-# 												$matchedRole.ScheduleInfo.Expiration.EndDateTime
-# 											} else {
-# 												'N/A'
-# 											}
-# 											'Description' = $role.Description
-# 									}
-# 								} else {
-# 									$principal = Get-MgServicePrincipal -ServicePrincipalId $assignment.PrincipalId
-# 									if ($null -ne $assignment.RoleDefinitionId) {
-# 										try {
-# 											$role = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions/$($assignment.RoleDefinitionId)"
-# 										} catch {
-# 											Write-Log -Message "Error retrieving assigned role for RoleDefinitionId: $($assignment.RoleDefinitionId). Error: $_" -Severity WARN
-# 											continue
-# 										}
-# 									} else {
-# 										Write-Log -Message 'RoleDefinitionId missing for assigned role.' -Severity WARN
-# 									}
-# 									$privilegedUsers += [PSCustomObject]@{
-# 										'RoleName' = $role.DisplayName
-# 										'DisplayName' = $principal.DisplayName
-# 										'userPrincipalName' = $principalName
-# 										'isBuiltIn' = $role.IsBuiltIn
-# 										'RoleType' = 'Assigned'
-# 										'DirectoryScope' = $directoryScopeName
-# 										'IsActivated' = 'True'
-# 										'Created Date (UTC)' = $null
-# 										'Expiration type' = 'noExpiration'
-# 										'Expiration Date (UTC)' = $null
-# 										'Description' = $role.Description
-# 									}
-# 								}
-# 							} catch {
-# 								Write-Log -Message "Failed to retrieve assigned details for $($role.DisplayName) Principal Id: $($assignment.PrincipalId). $_" -Severity ERROR
-# 							}
-# 						} else {
-# 							Write-Log -Message 'PrincipalId missing for assigned role.' -Severity WARN
-# 							continue
-# 						}
-
-# 					} catch {
-# 					Write-Log -Message "Error processing assigned role $($assignment.Id): $_" -Severity WARN
-# 					}
-# 				}
-
-# 				foreach ($eligibility in Get-MgRoleManagementDirectoryRoleEligibilitySchedule -All) {
-# 					try {
-# 						if ($null -ne $eligibility.PrincipalId) {
-# 							try {
-# 								$principal = Get-MgUser -UserId $eligibility.PrincipalId
-# 							} catch {
-# 								Write-Log -Message "Error retrieving user $($eligibility.PrincipalId). Error: $_" -Severity DEBUG
-# 								continue
-# 							}
-# 						} else {
-# 							Write-Log -Message 'PrincipalId missing for eligible role.' -Severity WARN
-# 							continue
-# 						}
-
-# 						if ($null -ne $eligibility.RoleDefinitionId) {
-# 							try {
-# 								$role = Get-MgRoleManagementDirectoryRoleDefinition -All | Where-Object { $_.Id -eq $eligibility.RoleDefinitionId }
-# 							} catch {
-# 								Write-Log -Message "Error retrieving eligible role for RoleDefinitionId: $($eligibility.RoleDefinitionId). Error: $_" -Severity WARN
-# 								continue
-# 							}
-# 						} else {
-# 							Write-Log -Message 'RoleDefinitionId missing for eligible role.' -Severity WARN
-# 						}
-
-# 						if ($null -ne $eligibility.DirectoryScopeId) {
-# 							try {
-# 								$cleanDirectoryScopeId = $eligibility.DirectoryScopeId -replace '/administrativeUnits/', ''
-# 								$directoryScope = Get-MgDirectoryAdministrativeUnit -All | Where-Object {$_.Id -eq $cleanDirectoryScopeId}
-# 								$directoryScopeName = $directoryScope.DisplayName
-# 							} catch {
-# 								$directoryScopeName = '/'
-# 							}
-# 						} else {
-# 							Write-Log -Message "Error retrieving directory scope name for DirectoryScopeId: $($cleanDirectoryScopeId). Error: $_" -Severity WARN
-# 						}
-
-# 						$isActivated = $eligibility | Where-Object { $_.PrincipalId -eq $eligibility.PrincipalId -and $_.RoleDefinitionId -eq $eligibility.RoleDefinitionId }
-
-# 						$privilegedUsers += [PSCustomObject]@{
-# 							'RoleName' = $role.DisplayName
-# 							'DisplayName' = $principal.DisplayName
-# 							'userPrincipalName' = $principal.UserPrincipalName
-# 							'isBuiltIn' = $role.IsBuiltIn
-# 							'RoleType' = 'Eligible'
-# 							'DirectoryScope' = $directoryScopeName
-# 							'IsActivated' = if ($null -ne $isActivated) {'True'} else {'False'}
-# 							'Created Date (UTC)' = $eligibility.CreatedDateTime
-# 							'Expiration type' = $eligibility.ScheduleInfo.Expiration.type
-# 							'Expiration Date (UTC)' = if ($eligibility.ScheduleInfo.Expiration.EndDateTime -match '20') {
-# 								$eligibility.ScheduleInfo.Expiration.EndDateTime
-# 							} else {
-# 								'N/A'
-# 							}
-# 							'Description' = $role.Description
-# 						}
-# 					} catch {
-# 						Write-Log -Message "Error processing eligible role: $_" -Severity WARN
-# 					}
-# 				}
-# 			}
-
-# 			elseif ($servicePlans -contains "AAD_PREMIUM") {
-# 				foreach ($assignment in Get-MgRoleManagementDirectoryRoleAssignment -All) {
-# 					try {
-# 						if ($null -ne $assignment.PrincipalId) {
-# 							try {
-# 								if ($assignment.PrincipalId -in $allUserIds) {
-# 									$principal = Get-MgUser -UserId $assignment.PrincipalId
-# 									if ($null -ne $assignment.RoleDefinitionId) {
-# 										try {
-# 											$role = Get-MgRoleManagementDirectoryRoleDefinition -All | Where-Object { $_.Id -eq $assignment.RoleDefinitionId }
-# 										} catch {
-# 											Write-Log -Message "Error retrieving assigned role for RoleDefinitionId: $($assignment.RoleDefinitionId). Error: $_" -Severity WARN
-# 											continue
-# 										}
-# 									} else {
-# 										Write-Log -Message 'RoleDefinitionId missing for assigned role.' -Severity WARN
-# 									}
-
-# 									if ($null -ne $assignment.DirectoryScopeId) {
-# 										try {
-# 											$cleanDirectoryScopeId = $assignment.DirectoryScopeId -replace '/administrativeUnits/', ''
-# 											$directoryScope = Get-MgDirectoryAdministrativeUnit -All | Where-Object { $_.Id -eq $cleanDirectoryScopeId }
-# 											$directoryScopeName = $directoryScope.DisplayName
-# 										} catch {
-# 											$directoryScopeName = '/'
-# 										}
-# 									} else {
-# 										Write-Log -Message "Error retrieving directory scope name for DirectoryScopeId: $($cleanDirectoryScopeId). Error: $_" -Severity WARN
-# 									}
-
-# 									$privilegedUsers += [PSCustomObject]@{
-# 											'RoleName' = $role.DisplayName
-# 											'DisplayName' = $principal.DisplayName
-# 											'userPrincipalName' = $principal.UserPrincipalName
-# 											'isBuiltIn' = $role.IsBuiltIn
-# 											'RoleType' = 'Assigned'
-# 											'DirectoryScope' = $directoryScopeName
-# 											'Description' = $role.Description
-# 									}
-# 								} else {
-# 									$principal = Get-MgServicePrincipal -ServicePrincipalId $assignment.PrincipalId
-# 									if ($null -ne $assignment.RoleDefinitionId) {
-# 										try {
-# 											$role = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleDefinitions/$($assignment.RoleDefinitionId)"
-# 										} catch {
-# 											Write-Log -Message "Error retrieving assigned role for RoleDefinitionId: $($assignment.RoleDefinitionId). Error: $_" -Severity WARN
-# 											continue
-# 										}
-# 									} else {
-# 										Write-Log -Message 'RoleDefinitionId missing for assigned role.' -Severity WARN
-# 									}
-# 									$privilegedUsers += [PSCustomObject]@{
-# 										'RoleName' = $role.DisplayName
-# 										'DisplayName' = $principal.DisplayName
-# 										'userPrincipalName' = 'N/A'
-# 										'isBuiltIn' = $role.IsBuiltIn
-# 										'RoleType' = 'Assigned'
-# 										'DirectoryScope' = $directoryScopeName
-# 										'Description' = $role.Description
-# 									}
-# 								}
-# 							} catch {
-# 								Write-Log -Message "Failed to retrieve assigned details for Service Principal Id: $($assignment.PrincipalId). $_" -Severity ERROR
-# 							}
-# 						} else {
-# 							Write-Log -Message 'PrincipalId missing for assigned role.' -Severity WARN
-# 							continue
-# 						}
-
-# 					} catch {
-# 					Write-Log -Message "Error processing assigned role $($assignment.Id): $_" -Severity WARN
-# 					}
-# 				}
-# 			}
-# 		} catch {
-# 			Write-Log -Message "Error processing assigned roles: $_" -Severity ERROR
-# 		}
-
-# 		$privilegedUsers = $privilegedUsers | Sort-Object @{Expression={if ($_.RoleName -eq 'Global Administrator') {0} else {1}}}, RoleName
-# 		$privilegedUsers | ConvertTo-M365PrivRows
-
-# 	}
-# }
 
 function Test-PrivilegedGroups($ctx) {
 	New-M365PrivReport -ctx $ctx -name 'privGroups' -title 'Privileged Groups' -dataSource {
@@ -1619,6 +1375,7 @@ function Test-StaleUsers($ctx) {
 				'AccountEnabled',
 				'SignInActivity',
 				'CreatedDateTime',
+				'LastPasswordChangeDateTime',
 				'AssignedLicenses'
 			)
 			$allUsers = Get-MgUser -All -Property $properties | Select-Object $properties
@@ -1646,6 +1403,7 @@ function Test-StaleUsers($ctx) {
 							'CreatedDateTime' = $user.CreatedDateTime
 							'LastSuccessfulSignInDate' = $LastSuccessfulSignInDate
 							'DaysSinceLastSignIn' = $DaysSinceLastSignIn
+							'LastPasswordChangeDateTime' = $user.LastPasswordChangeDateTime
 							'AccountEnabled' = $user.AccountEnabled
 							'IsLicensed' = $isLicensed
 							'UserType' = $user.UserType
