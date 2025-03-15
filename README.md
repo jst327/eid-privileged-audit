@@ -11,7 +11,7 @@ Building on the concept of Mark Ziesemer's <a href="https://github.com/ziesemer/
 * **Privileged groups:** Report on Entra roles and counts of how many users are assigned or eligible.
 * **Stale users:** Report on users that have not signed in for 30 days.
 * **Stale passwords:** Report on users with passwords that have not been updated in a year.
-* **User licenses:** Report on licenses assigned to users. 
+* **User licenses:** Report on licenses assigned to users.
 * **Tenant licenses:** Report on licenses and how many are total, in use, and available.
 * **Tenant auditing:** Reports on whether auditing has been enabled in the tenant.
 * **Shared mailbox sign-in allowed:** Reports on shared maillboxes that have sign-in enabled.
@@ -92,9 +92,8 @@ Ideas for future revisions.
   1. Risky detections report
   2. Risky users report
   3. Risky sign-ins report
-  4. Enterprise App permisions
+  4. Enterprise App permissions
   5. SharePoint permissions
-  6. CSV and history report
 
 ## Author
 
