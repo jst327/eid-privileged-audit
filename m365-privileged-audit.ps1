@@ -1689,13 +1689,14 @@ function Get-UserLicenses {
 function Get-TenantLicenses {
 	Get-LicenseNames
 	try {
-		$tenantLicenses = Get-MgSubscribedSKU -All | Select-Object SkuPartNumber, SkuId, @{Name = 'ActiveUnits'; Expression = { ($_.PrepaidUnits).Enabled } }, ConsumedUnits |
+		$tenantLicenses = Get-MgSubscribedSKU -All | Select-Object SkuPartNumber, SkuId, @{Name = 'ActiveUnits'; Expression = { ($_.PrepaidUnits).Enabled } }, ConsumedUnits, CapabilityStatus |
 		ForEach-Object {
 			[PSCustomObject]@{
 				'License' = $Global:licenseString.($_.SkuPartNumber)
 				'Total' = $_.ActiveUnits
 				'In Use' = $_.ConsumedUnits
 				'Available' = $_.ActiveUnits - $_.ConsumedUnits
+				'CapabilityStatus' = if ($_.CapabilityStatus) { $_.CapabilityStatus } else { 'Unknown' }
 			}
 		}
 		$tenantLicenses
