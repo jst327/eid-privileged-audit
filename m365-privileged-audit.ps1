@@ -1444,6 +1444,7 @@ function Test-StaleUsers($ctx) {
 		try {
 			$staleUsers = [System.Collections.Generic.List[Object]]::new()
 			$properties = @(
+				'Id',
 				'DisplayName',
 				'Mail',
 				'UserPrincipalName',
@@ -1474,6 +1475,7 @@ function Test-StaleUsers($ctx) {
 				if (!$user.SignInActivity.LastSuccessfulSignInDateTime -or (Get-Date $user.SignInActivity.LastSuccessfulSignInDateTime)) {
 					if ($DaysSinceLastSignIn -ge 30) {
 						$obj = [PSCustomObject]@{
+							'ObjectId' = $user.Id
 							'DisplayName' = $user.DisplayName
 							'UserPrincipalName' = $user.UserPrincipalName
 							'CreatedDateTime' = $user.CreatedDateTime
