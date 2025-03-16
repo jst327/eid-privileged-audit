@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-03-14
+# Justin Tucker - 2025-01-01, 2025-03-16
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-03-14'
+$version = '2025-03-16'
 $warnings = [System.Collections.ArrayList]::new()
 $m365ConnectParams = @{}
 
@@ -1100,7 +1100,8 @@ function Test-PrivilegedUsers($ctx) {
 					[Parameter(Mandatory)] [string]$principalId,
 					[Parameter(Mandatory)] [string]$roleDefinitionId,
 					[Parameter(Mandatory)] [string]$directoryScopeId,
-					[int]$memberDepth = 1
+					[int]$memberDepth = 1,
+					[string]$parentGroupId = $null
 				)
 
 				try {
@@ -1117,7 +1118,7 @@ function Test-PrivilegedUsers($ctx) {
 						$DaysSinceLastSignIn = $null
 						$groupMembers = Get-MgGroupMember -GroupId $principalId
 						foreach ($groupMember in $groupMembers) {
-							Get-RoleDetails -roleType $roleType -principalId $groupMember.Id -roleDefinitionId $roleDefinitionId -directoryScopeId $directoryScopeId -memberDepth ($memberDepth + 1)
+							Get-RoleDetails -roleType $roleType -principalId $groupMember.Id -roleDefinitionId $roleDefinitionId -directoryScopeId $directoryScopeId -memberDepth ($memberDepth + 1) -parentGroupId $principalId
 						}
 					} elseif ($principalId -in $allServicePrincipalIds) {
 						Write-Log -Message "PrincipalId $principalId identified as Service Principal." -Severity DEBUG
@@ -1147,6 +1148,7 @@ function Test-PrivilegedUsers($ctx) {
 					$roleName = $role | Where-Object {$_.Id -eq $roleDefinitionId} | Select-Object -ExpandProperty DisplayName
 					$roleDescription = $role | Where-Object {$_.Id -eq $roleDefinitionId} | Select-Object -ExpandProperty Description
 					$roleBuiltIn = $role | Where-Object {$_.Id -eq $roleDefinitionId} | Select-Object -ExpandProperty IsBuiltIn
+					$parentGroupName = if ($parentGroupId) { ($allGroups | Where-Object { $_.Id -eq $parentGroupId }).DisplayName } else { $null }
 
 					if ($null -ne $principal -and $principal.PSObject.Properties.Match('SignInActivity').Count -gt 0 -and $null -ne $principal.SignInActivity.LastSuccessfulSignInDateTime) {
 						$LastSuccessfulSignInDateTime = $principal.SignInActivity.LastSuccessfulSignInDateTime
@@ -1184,6 +1186,7 @@ function Test-PrivilegedUsers($ctx) {
 						'ObjectId' = if($null -ne $principal -and $principal.PSObject.Properties.Match('Id').Count -gt 0) {$principal.Id} else {"Unknown (PrincipalId: $principalId)"}
 						'DisplayName' = if($null -ne $principal -and $principal.PSObject.Properties.Match('DisplayName').Count -gt 0) {$principal.DisplayName} else {"Unknown Service Principal"}
 						'Type' = if($null -ne $userType) {$userType} elseif ($null -ne $serviceType) {$serviceType} elseif ($groupType -eq 'Unified') {'Microsoft 365 Group'} elseif (-not $groupType -or $groupType.Count -eq 0) {'Security Group'} else {'Unknown'}
+						'ParentGroup' = $parentGroupName
 						'CreatedDateTime' = if($null -ne $principal -and $principal.PSObject.Properties.Match('CreatedDateTime').Count -gt 0) {$principal.CreatedDateTime} else {$null}
 						'LastSuccessfulSignInDateTime' = if($null -ne $principal -and $principal.PSObject.Properties.Match('SignInActivity').Count -gt 0) {$principal.SignInActivity.LastSuccessfulSignInDateTime} else {$null}
 						'DaysSinceLastSignIn' = $DaysSinceLastSignIn
@@ -1237,8 +1240,68 @@ function Test-PrivilegedUsers($ctx) {
 		} catch {
 			Write-Log -Message "Error generating privileged user report: $_" -Severity ERROR
 		}
-		$privilegedUsers = $privilegedUsers | Sort-Object @{Expression = {if($_.RoleName -eq 'Global Administrator') { 0 } elseif ($null -ne $_.RoleName) { 1 } else { 2 } }}, RoleName, @{Expression = {if($_.Type -eq 'Microsoft 365 Group') {0} elseif ($_.Type -eq 'Security Group') {1} elseif ($_.Type -eq 'Service Principal') {2} else {3}}}, {$_.MemberDepth * -1}, DisplayName
-		$privilegedUsers | ConvertTo-M365PrivRows
+
+		$orderedList = @()
+		$processedUsers = @()
+
+		$globalAdmins = $privilegedUsers | Where-Object { $_.RoleName -eq 'Global Administrator' } | Sort-Object DisplayName
+		$nonGlobalRoles = $privilegedUsers | Where-Object { $_.RoleName -ne 'Global Administrator' }
+
+		$validRoles = $nonGlobalRoles | Where-Object { $_.RoleName }
+		$invalidRoles = $nonGlobalRoles | Where-Object { -not $_.RoleName }
+
+		$rolesGrouped = $validRoles | Sort-Object RoleName, DisplayName | Group-Object -Property RoleName
+
+		$orderedList += $globalAdmins
+		$processedUsers += $globalAdmins.ObjectId
+
+		foreach ($role in $rolesGrouped) {
+			$roleName = $role.Name
+			Write-Log "Processing Role: $roleName" -Severity DEBUG
+			$roleGroups = $role.Group | Where-Object { $_.Type -like "*Group" } | Sort-Object DisplayName
+			$roleUsers = $role.Group | Where-Object { $_.Type -eq 'Member' -or $_.Type -eq 'Guest' -and $_.MemberDepth -eq 2} | Sort-Object DisplayName
+			$directAssignments = $role.Group | Where-Object {$_.Type -eq 'Member' -or $_.Type -eq 'Guest' -and $_.MemberDepth -eq 1} | Sort-Object DisplayName
+			$orderedList += $directAssignments
+			$processedUsers += $directAssignments | Sort-Object DisplayName
+
+			foreach ($group in $roleGroups) {
+				$orderedList += $group
+				if ($group.ObjectId) {
+					$members = foreach ($user in $roleUsers) {
+						if ($user.ObjectId -and $user.MemberDepth -eq 2) {
+							try {
+								$userGroups = Get-MgUserMemberOf -UserId $user.ObjectId
+								if ($userGroups.Id -contains $group.ObjectId) {
+									$processedUsers += $user.ObjectId
+									$user
+								}
+							} catch {
+								Write-Log "Failed to retrieve groups for user: $($user.DisplayName) - $_" -Severity WARN
+							}
+						}
+						else {
+							Write-Log "Skipping user with no ObjectId: $($user.DisplayName)" -Severity WARN
+						}
+					}
+
+					$orderedList += $members | Sort-Object DisplayName
+				}
+				else {
+					Write-Log "Skipping group with no ObjectId: $($group.DisplayName)" -Severity WARN
+				}
+			}
+
+			$remainingUsers = $roleUsers | Where-Object {$null -ne $_.ObjectId -and $_.ObjectId -notin $processedUsers}
+			$orderedList += $remainingUsers
+			$processedUsers += $remainingUsers
+		}
+
+		if ($invalidRoles) {
+			Write-Log 'Found entries missing RoleName. Adding them at the end.' -Severity WARN
+			$orderedList += $invalidRoles | Sort-Object DisplayName
+		}
+
+		$orderedList | ConvertTo-M365PrivRows
 	}
 }
 
