@@ -1669,17 +1669,24 @@ function Get-UserLicenses {
 	Get-LicenseNames
 	try {
 		$licensedUsers = [System.Collections.Generic.List[Object]]::new()
-		$users = Get-MgUser -Filter 'assignedLicenses/$count ne 0' -ConsistencyLevel eventual -CountVariable licensedUserCount -All -Select UserPrincipalName,DisplayName,AssignedLicenses | Sort-Object DisplayName
+		$users = Get-MgUser -Filter 'assignedLicenses/$count ne 0' -ConsistencyLevel eventual -CountVariable licensedUserCount -All -Select AccountEnabled, AssignedLicenses, DisplayName, Id, UserPrincipalName, UserType
 		foreach ($user in $users) {
 			foreach ($license in $user.AssignedLicenses) {
 				$obj = [PSCustomObject]@{
+					'ObjectId' = $user.Id
 					'DisplayName' = $user.DisplayName
 					'UserPrincipalName' = $user.UserPrincipalName
+					'Type' = $user.UserType
+					'AccountEnabled' = $user.AccountEnabled
 					'License' = $Global:licenseGUID[$license.SkuId]
 				}
 				$licensedUsers.Add($obj)
 			}
+			if ($user.AccountEnabled -eq $false) {
+				Write-Log "Licensed user account $($user.UserPrincipalName) is disabled." -Severity WARN
+			}
 		}
+		$licensedUsers = $licensedUsers | Sort-Object @{Expression = {if ($_.AccountEnabled -eq $false) {0} else {1}}}, DisplayName
 		$licensedUsers
 	} catch {
 		Write-Log -Message "Error creating 'User Licenses' report. Error: $_" -Severity ERROR
