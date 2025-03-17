@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-03-16
+# Justin Tucker - 2025-01-01, 2025-03-17
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-03-16'
+$version = '2025-03-17'
 $warnings = [System.Collections.ArrayList]::new()
 $m365ConnectParams = @{}
 
@@ -1631,6 +1631,7 @@ function Test-UserRegistration($ctx){
 			$user = Get-MgUser -UserId $userDetail.Id
 
 			$allUsers += [PSCustomObject]@{
+				'ObjectId' = $user.Id
 				'DisplayName' = $user.DisplayName
 				'UserPrincipalName' = $user.UserPrincipalName
 				'IsAdmin?' = $userDetail.IsAdmin
