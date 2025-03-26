@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-03-17
+# Justin Tucker - 2025-01-01, 2025-03-25
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/m365-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-03-17'
+$version = '2025-03-25'
 $warnings = [System.Collections.ArrayList]::new()
 $m365ConnectParams = @{}
 
@@ -1088,7 +1088,7 @@ function Test-PrivilegedUsers($ctx) {
 		$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
 		$isEntraP2 = $servicePlans -contains 'AAD_PREMIUM_P2'
 		$isEntraP1 = $servicePlans -contains 'AAD_PREMIUM'
-		$allUsers = Get-MgUser -All -Property CreatedDateTime, DisplayName, Id, LastPasswordChangeDateTime, SignInActivity, UserPrincipalName, UserType
+		$allUsers = Get-MgUser -All -Property CreatedDateTime, DisplayName, Id, LastPasswordChangeDateTime, OnPremisesSyncEnabled, SignInActivity, UserPrincipalName, UserType
 		$allGroups = Get-MgGroup -All
 		$allServicePrincipalIds = (Get-MgServicePrincipal -All).Id
 		$role = Get-MgRoleManagementDirectoryRoleDefinition -All
@@ -1179,12 +1179,17 @@ function Test-PrivilegedUsers($ctx) {
 						$expirationDateTime = $null
 					}
 
+					if ($null -ne $principal -and $principal.PSObject.Properties.Match('OnPremisesSyncEnabled').Count -gt 0 -and $principal.OnPremisesSyncEnabled) {
+						Write-Log -Message "Privileged user $($principal.UserPrincipalName) is synced from on-premises." -Severity WARN
+					}
+
 					return [PSCustomObject]@{
 						'RoleId' = if($null -ne $roleId) {$roleId} else {$null}
 						'RoleName' = $roleName
 						'MemberDepth' = $memberDepth
 						'ObjectId' = if($null -ne $principal -and $principal.PSObject.Properties.Match('Id').Count -gt 0) {$principal.Id} else {"Unknown (PrincipalId: $principalId)"}
 						'DisplayName' = if($null -ne $principal -and $principal.PSObject.Properties.Match('DisplayName').Count -gt 0) {$principal.DisplayName} else {"Unknown Service Principal"}
+						'OnPremisesSyncEnabled' = if($null -ne $principal -and $principal.PSObject.Properties.Match('OnPremisesSyncEnabled').Count -gt 0) {$principal.OnPremisesSyncEnabled} else {$null}
 						'Type' = if($null -ne $userType) {$userType} elseif ($null -ne $serviceType) {$serviceType} elseif ($groupType -eq 'Unified') {'Microsoft 365 Group'} elseif (-not $groupType -or $groupType.Count -eq 0) {'Security Group'} else {'Unknown'}
 						'ParentGroup' = $parentGroupName
 						'CreatedDateTime' = if($null -ne $principal -and $principal.PSObject.Properties.Match('CreatedDateTime').Count -gt 0) {$principal.CreatedDateTime} else {$null}
