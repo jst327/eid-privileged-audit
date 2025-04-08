@@ -1,8 +1,8 @@
-# Microsoft 365 Privileged Audit
+# Entra ID Privileged Audit
 
 ## Overview
 
-Building on the concept of Mark Ziesemer's <a href="https://github.com/ziesemer/ad-privileged-audit" target="_blank">AD Privileged Audit</a>, this project delivers a PowerShell script designed to generate security-focused [reports](#reports) for your Microsoft 365 tenant. The reports provide valuable insights to enhance security and ensure compliance across your environment. By leveraging the Microsoft Graph API and PowerShell modules, the script efficiently generates detailed reports, typically presented in an interactive [Out-GridView](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/out-gridview?view=powershell-7.4) interface within minutes.
+Building on the concept of Mark Ziesemer's <a href="https://github.com/ziesemer/ad-privileged-audit" target="_blank">AD Privileged Audit</a>, this project delivers a PowerShell script designed to generate security-focused [reports](#reports) for Entra ID. The reports provide valuable insights to enhance security and ensure compliance across your environment. By leveraging the Microsoft Graph API and PowerShell modules, the script efficiently generates detailed reports, typically presented in an interactive [Out-GridView](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/out-gridview?view=powershell-7.4) interface within minutes.
 
 ## Features
 

@@ -1,6 +1,6 @@
 # Justin Tucker - 2025-01-01, 2025-03-25
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
-# https://github.com/jst327/m365-privileged-audit
+# https://github.com/jst327/EID-privileged-audit
 
 Param(
 	[string]$server = $null,
@@ -17,7 +17,7 @@ $InformationPreference = 'Continue'
 
 $version = '2025-03-25'
 $warnings = [System.Collections.ArrayList]::new()
-$m365ConnectParams = @{}
+$EIDConnectParams = @{}
 
 $Global:WarningsAndErrors = [System.Collections.ArrayList]::new()
 $Global:licenseGUID = @{}
@@ -729,39 +729,39 @@ function Get-ADPrivOSVersion($ctx, $row){
 	return $result
 }
 
-function Resolve-M365PrivProps([string]$class, [string]$context=$null, [switch]$generated){
+function Resolve-EIDPrivProps([string]$class, [string]$context=$null, [switch]$generated){
 	$props = [System.Collections.ArrayList]::new()
-	function Expand-M365Prop($p){
+	function Expand-EIDProp($p){
 		if($p -is [string]){
 			[void]$props.Add($p)
 		}elseif($p -is [array]){
 			$p | ForEach-Object{
-				Expand-M365Prop $_
+				Expand-EIDProp $_
 			}
 		}elseif($p.type -ceq 'class'){
 			if(!$class -or $class -in $p.class){
-				Expand-M365Prop $p.props
+				Expand-EIDProp $p.props
 			}
 		}elseif($p.type -ceq 'generated'){
 			if($generated){
-				Expand-M365Prop $p.props
+				Expand-EIDProp $p.props
 			}
 		}elseif($p.type -ceq 'context'){
 			if($context -and $context -in @($p.context)){
-				Expand-M365Prop $p.props
+				Expand-EIDProp $p.props
 			}
 		}else{
 			throw "Unhandled property type: $($p.type)"
 		}
 	}
 
-	Expand-M365Prop $ctx.m365Props.source
+	Expand-EIDProp $ctx.EIDProps.source
 	return $props
 }
 
-function Initialize-M365PrivProps($ctx){
+function Initialize-EIDPrivProps($ctx){
 	# - https://docs.microsoft.com/en-us/windows/win32/adschema/classes-all
-	$ctx.m365Props.source = 'objectSid', 'Name',
+	$ctx.EIDProps.source = 'objectSid', 'Name',
 		@{type='class'; class='user', 'computer'; props=
 			'Enabled',
 			@{type='generated'; props='lastLogonTimestampDate'}, 'lastLogonTimestamp',
@@ -787,17 +787,17 @@ function Initialize-M365PrivProps($ctx){
 		'ObjectClass', 'ObjectGUID', 'mS-DS-ConsistencyGuid',
 		'isCriticalSystemObject', 'ProtectedFromAccidentalDeletion'
 
-	$ctx.m365Props.allOut = Resolve-M365PrivProps -generated
-	$ctx.m365Props.userIn = Resolve-M365PrivProps 'user'
-	$ctx.m365Props.userOut = Resolve-M365PrivProps 'user' -generated
-	$ctx.m365Props.compIn = Resolve-M365PrivProps 'computer'
-	$ctx.m365Props.compOut = Resolve-M365PrivProps 'computer' -generated
-	$ctx.m365Props.groupIn = Resolve-M365PrivProps 'group'
-	$ctx.m365Props.groupOut = Resolve-M365PrivProps 'group' -generated
-	$ctx.m365Props.objectIn = Resolve-M365PrivProps 'object'
+	$ctx.EIDProps.allOut = Resolve-EIDPrivProps -generated
+	$ctx.EIDProps.userIn = Resolve-EIDPrivProps 'user'
+	$ctx.EIDProps.userOut = Resolve-EIDPrivProps 'user' -generated
+	$ctx.EIDProps.compIn = Resolve-EIDPrivProps 'computer'
+	$ctx.EIDProps.compOut = Resolve-EIDPrivProps 'computer' -generated
+	$ctx.EIDProps.groupIn = Resolve-EIDPrivProps 'group'
+	$ctx.EIDProps.groupOut = Resolve-EIDPrivProps 'group' -generated
+	$ctx.EIDProps.objectIn = Resolve-EIDPrivProps 'object'
 }
 
-function ConvertTo-M365PrivRows{
+function ConvertTo-EIDPrivRows{
 	[CmdletBinding()]
 	param(
 		[Parameter(Mandatory, ValueFromPipeline)]
@@ -844,7 +844,7 @@ function ConvertTo-M365PrivRows{
 	}
 }
 
-function Out-M365PrivReports{
+function Out-EIDPrivReports{
 	[CmdletBinding()]
 	param(
 		[Parameter(Mandatory, ValueFromPipeline)]
@@ -896,7 +896,7 @@ function Out-M365PrivReports{
 	}
 }
 
-function New-M365PrivReport{
+function New-EIDPrivReport{
 	[CmdletBinding()]
 	param(
 		[Parameter(Mandatory)]
@@ -912,7 +912,7 @@ function New-M365PrivReport{
 
 	Write-Log "Processing $title ($name)..."
 	try{
-		& $dataSource | Out-M365PrivReports -ctx $ctx -name $name -title $title
+		& $dataSource | Out-EIDPrivReports -ctx $ctx -name $name -title $title
 	}catch{
 		if($mayNotFail){
 			throw $_
@@ -928,15 +928,15 @@ function New-M365PrivReport{
 	}
 }
 
-function Get-M365PrivReportsFolder(){
+function Get-EIDPrivReportsFolder(){
 	if(!$reportsFolder){
 		$desktopPath = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Desktop)
-		$reportsFolder = Join-Path $desktopPath 'M365-Reports'
+		$reportsFolder = Join-Path $desktopPath 'EID-Reports'
 	}
 	$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($reportsFolder)
 }
 
-function Initialize-M365PrivReports(){
+function Initialize-EIDPrivReports(){
 	$ctx = [ordered]@{
 		params = [ordered]@{
 			version = $version
@@ -944,7 +944,7 @@ function Initialize-M365PrivReports(){
 			currentUser = $null
 			hostName = [System.Net.Dns]::GetHostName()
 			domain = $null
-			m366ConnectParams = $m365ConnectParams
+			m366ConnectParams = $EIDConnectParams
 			psExe = (Get-Process -Id $PID).Path
 			psVersionTable = $PSVersionTable
 			interactive = !$batch
@@ -958,13 +958,13 @@ function Initialize-M365PrivReports(){
 		reports = [ordered]@{}
 		reportFiles = [ordered]@{}
 		reportRowCounts = @{}
-		m365Props = [ordered]@{}
+		EIDProps = [ordered]@{}
 		osVersions = $null
 	}
 
 	Write-Log ('Version: ' + $version)
 
-	$reportsFolder = Get-M365PrivReportsFolder
+	$reportsFolder = Get-EIDPrivReportsFolder
 	$ctx.params.reportsFolder = $reportsFolder
 	Write-Log ('$reportsFolder: {0}' -f $reportsFolder)
 	if(!$ctx.params.noFiles){
@@ -990,7 +990,7 @@ function Initialize-M365PrivReports(){
 	}
 
 	if($server){
-		$m365ConnectParams['Server'] = $server
+		$EIDConnectParams['Server'] = $server
 	}
 	$domain = $ctx.params.domain = (Get-MgDomain | Where-Object {$_.isDefault}).Id
 
@@ -1014,18 +1014,18 @@ function Initialize-M365PrivReports(){
 		$ctx.reportFiles['params'] = $paramsJsonPath
 	}
 
-	Initialize-M365PrivProps $ctx
+	Initialize-EIDPrivProps $ctx
 
 	return $ctx
 }
 
-function Invoke-M365PrivReportHistory($ctx){
+function Invoke-EIDPrivReportHistory($ctx){
 	if(!(Test-Path $ctx.params.reportsFolder -PathType Container)){
-		Write-Log 'Invoke-M365PrivReportHistory: reportsFolder does not exist, exiting.'
+		Write-Log 'Invoke-EIDPrivReportHistory: reportsFolder does not exist, exiting.'
 		return
 	}
 
-	New-M365PrivReport -ctx $ctx -name 'reportHistory' -title 'M365 Privileged Audit Report History' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'reportHistory' -title 'EID Privileged Audit Report History' -dataSource {
 		$rowCounts = @{}
 
 		# Read prior counts from cache.
@@ -1078,12 +1078,12 @@ function Invoke-M365PrivReportHistory($ctx){
 				}
 			} | Export-Csv -NoTypeInformation -Path $rptHistRowCountCacheCsv -Encoding $ctx.params.fileEncoding
 		} | Sort-Object -Property 'Domain', 'Report', 'Date', 'DateSuffix', 'CsvFile' `
-			| ConvertTo-M365PrivRows
+			| ConvertTo-EIDPrivRows
 	}
 }
 
 function Test-PrivilegedUsers($ctx) {
-	New-M365PrivReport -ctx $ctx -name 'privUsers' -title 'Privileged Users' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'privUsers' -title 'Privileged Users' -dataSource {
 		$privilegedUsers = @()
 		$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
 		$isEntraP2 = $servicePlans -contains 'AAD_PREMIUM_P2'
@@ -1306,12 +1306,12 @@ function Test-PrivilegedUsers($ctx) {
 			$orderedList += $invalidRoles | Sort-Object DisplayName
 		}
 
-		$orderedList | ConvertTo-M365PrivRows
+		$orderedList | ConvertTo-EIDPrivRows
 	}
 }
 
 function Test-PrivilegedGroups($ctx) {
-	New-M365PrivReport -ctx $ctx -name 'privGroups' -title 'Privileged Groups' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'privGroups' -title 'Privileged Groups' -dataSource {
 		try {
 			$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
 
@@ -1379,7 +1379,7 @@ function Test-PrivilegedGroups($ctx) {
 					Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } else { 1 } }
 				}, RoleName
 
-				$privilegedGroups | ConvertTo-M365PrivRows
+				$privilegedGroups | ConvertTo-EIDPrivRows
 
 			} elseif ($servicePlans -contains 'AAD_PREMIUM') {
 				$roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
@@ -1433,7 +1433,7 @@ function Test-PrivilegedGroups($ctx) {
 					Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } else { 1 } }
 				}, RoleName
 
-				$privilegedGroups | ConvertTo-M365PrivRows
+				$privilegedGroups | ConvertTo-EIDPrivRows
 
 			} else {
 				Write-Host 'No relevant service plans found.'
@@ -1445,7 +1445,7 @@ function Test-PrivilegedGroups($ctx) {
 }
 
 function Test-StaleUsers($ctx) {
-	New-M365PrivReport -ctx $ctx -name 'staleUsers' -title 'Stale Users' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'staleUsers' -title 'Stale Users' -dataSource {
 		try {
 			$staleUsers = [System.Collections.Generic.List[Object]]::new()
 			$properties = @(
@@ -1505,7 +1505,7 @@ function Test-StaleUsers($ctx) {
 				Write-Log -Message 'No stale users found.' -Severity INFO
 			}
 			$staleUsers = $staleUsers | Sort-Object -Property DaysSinceLastSignIn -Descending
-			$staleUsers | ConvertTo-M365PrivRows
+			$staleUsers | ConvertTo-EIDPrivRows
 		} catch {
 			Write-Log -Message "Error creating 'Stale Users' report. Error: $_" -Severity ERROR
 		}
@@ -1513,7 +1513,7 @@ function Test-StaleUsers($ctx) {
 }
 
 function Test-StalePasswords($ctx) {
-	New-M365PrivReport -ctx $ctx -name 'stalePasswords' -title 'Stale Passwords' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'stalePasswords' -title 'Stale Passwords' -dataSource {
 		try {
 			$stalePasswords = [System.Collections.Generic.List[Object]]::new()
 			$properties = @(
@@ -1569,7 +1569,7 @@ function Test-StalePasswords($ctx) {
 				Write-Log -Message 'No stale passwords found.'
 			}
 			$stalePasswords = $stalePasswords | Sort-Object -Property DaysSinceLastPasswordChange -Descending
-			$stalePasswords | ConvertTo-M365PrivRows
+			$stalePasswords | ConvertTo-EIDPrivRows
 		} catch {
 			Write-Log -Message "Error creating 'Stale Passwords' report. Error: $_" -Severity ERROR
 		}
@@ -1577,7 +1577,7 @@ function Test-StalePasswords($ctx) {
 }
 
 function Test-StaleComputers($ctx){
-	New-M365PrivReport -ctx $ctx -name 'staleComputers' -title 'Stale Computers' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'staleComputers' -title 'Stale Computers' -dataSource {
 		$staleDaysThreshold = 90
 		$now = Get-Date
 		$computers = Get-MgDevice -All
@@ -1592,7 +1592,7 @@ function Test-StaleComputers($ctx){
 				OperatingSystemVersion,
 				ApproximateLastSignInDateTime
 
-			$staleComputersReport | ConvertTo-M365PrivRows
+			$staleComputersReport | ConvertTo-EIDPrivRows
 		} else {
 			Write-Log -Message 'No stale computers found.'
 		}
@@ -1602,7 +1602,7 @@ function Test-StaleComputers($ctx){
 function Test-UnsupportedOS($ctx){
 	$ctx.osVersions = Initialize-ADPrivOSVersions
 
-	New-M365PrivReport -ctx $ctx -name 'unsupportedOS' -title 'Unsupported Operating Systems' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'unsupportedOS' -title 'Unsupported Operating Systems' -dataSource {
 		Get-MgDevice -All `
 			| ForEach-Object {
 				$row = $_
@@ -1623,13 +1623,13 @@ function Test-UnsupportedOS($ctx){
 					$row
 				}
 			}	| Sort-Object -Property 'OS EOS Mainstream Life', 'lastLogonTimestamp' `
-			| ConvertTo-M365PrivRows -property (@('Name', 'OperatingSystem', 'OperatingSystemVersion', 'OS Version', 'OS Build', 'OS Build Ver', 'OS Availability',
+			| ConvertTo-EIDPrivRows -property (@('Name', 'OperatingSystem', 'OperatingSystemVersion', 'OS Version', 'OS Build', 'OS Build Ver', 'OS Availability',
 				'OS EOS Mainstream', 'OS EOS Mainstream Life', 'OS EOS Extended', 'OS EOS Extended Life', 'OS EOS Max Life', 'lastLogonTimestampDate'))
 	}
 }
 
 function Test-UserRegistration($ctx){
-	New-M365PrivReport -ctx $ctx -name 'userRegistration' -title 'User Registration' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'userRegistration' -title 'User Registration' -dataSource {
 		$userDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
 		$allUsers = @()
 		foreach ($userDetail in $userDetails) {
@@ -1649,7 +1649,7 @@ function Test-UserRegistration($ctx){
 				'LastUpdated' = $userDetail.LastUpdatedDateTime
 			}
 		}
-		$allUsers | ConvertTo-M365PrivRows
+		$allUsers | ConvertTo-EIDPrivRows
 	}
 }
 
@@ -1732,7 +1732,7 @@ function Test-AuditStatus {
 }
 
 function Test-SharedMailboxSignInAllowed {
-	New-M365PrivReport -ctx $ctx -name 'sharedMailboxSignInAllowed' -title 'Shared Mailbox Sign-In Allowed' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'sharedMailboxSignInAllowed' -title 'Shared Mailbox Sign-In Allowed' -dataSource {
 		$sharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox
 		$enabledMailboxes = [System.Collections.Generic.List[Object]]::new()
 
@@ -1763,10 +1763,10 @@ function Test-SharedMailboxSignInAllowed {
 		}
 	}
 	$enabledMailboxes = $enabledMailboxes | Sort-Object 'DisplayName'
-	$enabledMailboxes | ConvertTo-M365PrivRows
+	$enabledMailboxes | ConvertTo-EIDPrivRows
 }
 
-function Invoke-M365PrivReports($ctx){
+function Invoke-EIDPrivReports($ctx){
 	# Privileged Users...
 	Test-PrivilegedUsers -ctx $ctx
 
@@ -1789,15 +1789,15 @@ function Invoke-M365PrivReports($ctx){
 	Test-UserRegistration -ctx $ctx
 
 	# User Licenses...
-	New-M365PrivReport -ctx $ctx -name 'userLicenses' -title 'User Licenses' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'userLicenses' -title 'User Licenses' -dataSource {
 		Get-UserLicenses `
-			| ConvertTo-M365PrivRows
+			| ConvertTo-EIDPrivRows
 	}
 
 	# Tenant Licenses...
-	New-M365PrivReport -ctx $ctx -name 'tenantLicenses' -title 'Tenant Licenses' -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'tenantLicenses' -title 'Tenant Licenses' -dataSource {
 		Get-TenantLicenses `
-			| ConvertTo-M365PrivRows
+			| ConvertTo-EIDPrivRows
 	}
 
 	# Audit Status...
@@ -1807,9 +1807,9 @@ function Invoke-M365PrivReports($ctx){
 	#Test-SharedMailboxSignInAllowed
 
 	# Warnings...
-	New-M365PrivReport -ctx $ctx -name 'warnings' -title 'Warnings' -mayNotFail -dataSource {
+	New-EIDPrivReport -ctx $ctx -name 'warnings' -title 'Warnings' -mayNotFail -dataSource {
 		$warnings `
-			| ConvertTo-M365PrivRows
+			| ConvertTo-EIDPrivRows
 	}
 
 	# Post-run File Processing
@@ -1829,7 +1829,7 @@ function Invoke-M365PrivReports($ctx){
 			}
 		}
 
-		Invoke-M365PrivReportHistory -ctx $ctx
+		Invoke-EIDPrivReportHistory -ctx $ctx
 	}
 
 	if($ctx.params.passThru){
@@ -1837,10 +1837,10 @@ function Invoke-M365PrivReports($ctx){
 	}
 }
 
-function Invoke-M365PrivMain(){
+function Invoke-EIDPrivMain(){
 	try{
-		$ctx = Initialize-M365PrivReports
-		Invoke-M365PrivReports -ctx $ctx
+		$ctx = Initialize-EIDPrivReports
+		Invoke-EIDPrivReports -ctx $ctx
 		Disconnect-MgGraph
 		Write-Log 'Done!'
 		if($ctx.params.interactive){
@@ -1858,5 +1858,5 @@ function Invoke-M365PrivMain(){
 }
 
 if($MyInvocation.InvocationName -ne '.'){
-	Invoke-M365PrivMain
+	Invoke-EIDPrivMain
 }
