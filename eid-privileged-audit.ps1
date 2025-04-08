@@ -1,6 +1,6 @@
 # Justin Tucker - 2025-01-01, 2025-03-25
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
-# https://github.com/jst327/EID-privileged-audit
+# https://github.com/jst327/eid-privileged-audit
 
 Param(
 	[string]$server = $null,
