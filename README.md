@@ -2,7 +2,7 @@
 
 ## Overview
 
-Building on the concept of Mark Ziesemer's <a href="https://github.com/ziesemer/ad-privileged-audit" target="_blank">AD Privileged Audit</a>, this project delivers a PowerShell script designed to generate security-focused [reports](#reports) for Entra ID. The reports provide valuable insights to enhance security and ensure compliance across your environment. By leveraging the Microsoft Graph API and PowerShell modules, the script efficiently generates detailed reports, typically presented in an interactive [Out-GridView](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/out-gridview?view=powershell-7.4) interface within minutes.
+Building on the concept of Mark Ziesemer's [AD Privileged Audit](https://github.com/ziesemer/ad-privileged-audit), this project delivers a PowerShell script designed to generate security-focused [reports](#reports) for Entra ID. The reports provide valuable insights to enhance security and ensure compliance across your environment. By leveraging the Microsoft Graph API and PowerShell modules, the script efficiently generates detailed reports, typically presented in an interactive [Out-GridView](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/out-gridview?view=powershell-7.4) interface within minutes.
 
 ## Features
 
@@ -17,7 +17,8 @@ Building on the concept of Mark Ziesemer's <a href="https://github.com/ziesemer/
 * **Shared mailbox sign-in allowed:** Reports on shared maillboxes that have sign-in enabled.
 
 ## Prerequisites
-1. **PowerShell Version:** PowerShell 5.1 requiredDesigned to be fast and efficient, typically provides "immediate" (no post-processing required) results within several minutes.
+
+1. **PowerShell Version:** PowerShell 5.1 required. Designed to be fast and efficient, typically provides "immediate" (no post-processing required) results within several minutes.
 2. **PowerShell Modules:** While the script checks, it will not install the following required modules:
    * Microsoft.Graph
    * ExchangeOnlineManagement (for auditing check)
@@ -27,6 +28,7 @@ Building on the concept of Mark Ziesemer's <a href="https://github.com/ziesemer/
    * Cloud Application Administrator
 
 ## Execution
+
 1. Right-click **[here](m365-privileged-audit.ps1?raw=1)**, then click "Save link as" from your web browser.
    1. Save to your Downloads, Desktop, or another convenient location.
 2. Right-click the script from your desktop (or location you chose), then click "Properties".
@@ -36,7 +38,9 @@ Building on the concept of Mark Ziesemer's <a href="https://github.com/ziesemer/
 5. The displayed grids can be minimized or closed one-at-a-time as they are reviewed. Completing the "Press any key to continue..." prompt in or closing the main PowerShell window will close any remaining windows.
 
 ## Reports
+
 Current reports include:
+
 1. User Registration Details
    1. Much like the user registration details that can be exported from Entra. It will include columns like:
       * Is Admin?
