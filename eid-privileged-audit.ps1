@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-03-25
+# Justin Tucker - 2025-01-01, 2025-04-09
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-03-25'
+$version = '2025-04-09'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -1310,8 +1310,8 @@ function Test-PrivilegedUsers($ctx) {
 	}
 }
 
-function Test-PrivilegedGroups($ctx) {
-	New-EIDPrivReport -ctx $ctx -name 'privGroups' -title 'Privileged Groups' -dataSource {
+function Test-PrivilegedRoles($ctx) {
+	New-EIDPrivReport -ctx $ctx -name 'privRoles' -title 'Privileged Roles' -dataSource {
 		try {
 			$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
 
@@ -1365,7 +1365,7 @@ function Test-PrivilegedGroups($ctx) {
 				Get-Roles -Roles (Get-MgRoleManagementDirectoryRoleAssignment -All) -Type 'Assigned'
 				Get-Roles -Roles (Get-MgRoleManagementDirectoryRoleEligibilitySchedule -All) -Type 'Eligible'
 
-				$privilegedGroups = $roleCounts.GetEnumerator() | ForEach-Object {
+				$privilegedRoles = $roleCounts.GetEnumerator() | ForEach-Object {
 					[PSCustomObject]@{
 						'RoleName' = $_.Key
 						'isBuiltIn' = $_.Value['isBuiltIn']
@@ -1375,11 +1375,11 @@ function Test-PrivilegedGroups($ctx) {
 					}
 				}
 
-				$privilegedGroups = $privilegedGroups | Sort-Object @{
+				$privilegedRoles = $privilegedRoles | Sort-Object @{
 					Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } else { 1 } }
 				}, RoleName
 
-				$privilegedGroups | ConvertTo-EIDPrivRows
+				$privilegedRoles | ConvertTo-EIDPrivRows
 
 			} elseif ($servicePlans -contains 'AAD_PREMIUM') {
 				$roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
@@ -1420,7 +1420,7 @@ function Test-PrivilegedGroups($ctx) {
 					}
 				}
 
-				$privilegedGroups = $roleCounts.GetEnumerator() | ForEach-Object {
+				$privilegedRoles = $roleCounts.GetEnumerator() | ForEach-Object {
 					[PSCustomObject]@{
 						'RoleName' = $_.Key
 						'isBuiltIn' = $_.Value['isBuiltIn']
@@ -1429,17 +1429,17 @@ function Test-PrivilegedGroups($ctx) {
 					}
 				}
 
-				$privilegedGroups = $privilegedGroups | Sort-Object @{
+				$privilegedRoles = $privilegedRoles | Sort-Object @{
 					Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } else { 1 } }
 				}, RoleName
 
-				$privilegedGroups | ConvertTo-EIDPrivRows
+				$privilegedRoles | ConvertTo-EIDPrivRows
 
 			} else {
 				Write-Host 'No relevant service plans found.'
 			}
 		} catch {
-			Write-Log -Message "Error creating 'Privileged Groups' report. Error: $_" -Severity ERROR
+			Write-Log -Message "Error creating 'Privileged Roles' report. Error: $_" -Severity ERROR
 		}
 	}
 }
@@ -1770,8 +1770,8 @@ function Invoke-EIDPrivReports($ctx){
 	# Privileged Users...
 	Test-PrivilegedUsers -ctx $ctx
 
-	# Privileged Groups...
-	Test-PrivilegedGroups -ctx $ctx
+	# Privileged Roles...
+	Test-PrivilegedRoles -ctx $ctx
 
 	# Stale Users...
 	Test-StaleUsers -ctx $ctx
