@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-04-09
+# Justin Tucker - 2025-01-01, 2025-04-11
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-04-09'
+$version = '2025-04-11'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -1314,10 +1314,24 @@ function Test-PrivilegedRoles($ctx) {
 	New-EIDPrivReport -ctx $ctx -name 'privRoles' -title 'Privileged Roles' -dataSource {
 		try {
 			$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
+			$roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
+			$roleDefDict = @{}
+			foreach ($role in $roleDefinitions) {
+				$roleDefDict[$role.Id] = $role
+			}
 
 			if ($servicePlans -contains 'AAD_PREMIUM_P2') {
-				$roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
 				$roleCounts = @{}
+
+				foreach ($role in $roleDefinitions) {
+					$roleCounts[$role.DisplayName] = @{
+						'isBuiltIn' = $role.IsBuiltIn
+						'Assigned#' = 0
+						'Eligible#' = 0
+						'Description' = $role.Description
+					}
+				}
+
 				function Get-Roles {
 					param (
 						[array]$Roles,
@@ -1331,7 +1345,7 @@ function Test-PrivilegedRoles($ctx) {
 								continue
 							}
 
-							$role = $roleDefinitions | Where-Object { $_.Id -eq $roleEntry.RoleDefinitionId }
+							$role = $roleDefDict[$roleEntry.RoleDefinitionId]
 
 							if ($null -eq $role) {
 								try {
@@ -1351,10 +1365,7 @@ function Test-PrivilegedRoles($ctx) {
 										'Description' = $role.Description
 									}
 								}
-
 								$roleCounts[$role.DisplayName]["${Type}#"] += 1
-							} else {
-								Write-Log -Message "Role definition not found for RoleDefinitionId: $($roleEntry.RoleDefinitionId)." -Severity WARN
 							}
 						} catch {
 							Write-Log -Message "Error processing $Type role $($roleEntry.Id). Error: $_" -Severity WARN
@@ -1375,15 +1386,25 @@ function Test-PrivilegedRoles($ctx) {
 					}
 				}
 
-				$privilegedRoles = $privilegedRoles | Sort-Object @{
-					Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } else { 1 } }
-				}, RoleName
+				$privilegedRoles = $privilegedRoles | Sort-Object `
+					@{Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } `
+						elseif ($_.'Assigned#' -gt 0 -or $_.'Eligible#' -gt 0) { 1 } `
+						else { 2 }	}}, RoleName
 
 				$privilegedRoles | ConvertTo-EIDPrivRows
 
 			} elseif ($servicePlans -contains 'AAD_PREMIUM') {
-				$roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
 				$roleCounts = @{}
+
+				foreach ($role in $roleDefinitions) {
+					$roleCounts[$role.DisplayName] = @{
+						'isBuiltIn' = $role.IsBuiltIn
+						'Assigned#' = 0
+						'Eligible#' = 0
+						'Description' = $role.Description
+					}
+				}
+
 				foreach ($assignment in Get-MgRoleManagementDirectoryRoleAssignment -All) {
 					try {
 						if ($null -eq $assignment.RoleDefinitionId) {
@@ -1391,7 +1412,7 @@ function Test-PrivilegedRoles($ctx) {
 							continue
 						}
 
-						$role = $roleDefinitions | Where-Object { $_.Id -eq $assignment.RoleDefinitionId }
+						$role = $roleDefDict[$assignment.RoleDefinitionId]
 
 						if ($null -eq $role) {
 							try {
@@ -1407,13 +1428,11 @@ function Test-PrivilegedRoles($ctx) {
 								$roleCounts[$role.DisplayName] = @{
 									'isBuiltIn' = $role.IsBuiltIn
 									'Assigned#' = 0
+									'Eligible#' = 0
 									'Description' = $role.Description
 								}
 							}
-
 							$roleCounts[$role.DisplayName]['Assigned#'] += 1
-						} else {
-							Write-Log -Message "Role definition not found for RoleDefinitionId: $($assignment.RoleDefinitionId)" -Severity WARN
 						}
 					} catch {
 						Write-Log -Message "Error processing assigned role $($assignment.Id). Error: $_" -Severity WARN
@@ -1422,19 +1441,20 @@ function Test-PrivilegedRoles($ctx) {
 
 				$privilegedRoles = $roleCounts.GetEnumerator() | ForEach-Object {
 					[PSCustomObject]@{
-						'RoleName' = $_.Key
-						'isBuiltIn' = $_.Value['isBuiltIn']
-						'Assigned#' = $_.Value['Assigned#']
+						'RoleName'   = $_.Key
+						'isBuiltIn'  = $_.Value['isBuiltIn']
+						'Assigned#'  = $_.Value['Assigned#']
+						'Eligible#'  = $_.Value['Eligible#']
 						'Description' = $_.Value['Description']
 					}
 				}
 
-				$privilegedRoles = $privilegedRoles | Sort-Object @{
-					Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } else { 1 } }
-				}, RoleName
+				$privilegedRoles = $privilegedRoles | Sort-Object `
+					@{Expression = { if ($_.RoleName -eq 'Global Administrator') { 0 } `
+						elseif ($_.'Assigned#' -gt 0 -or $_.'Eligible#' -gt 0) { 1 } `
+						else { 2 }	}}, RoleName
 
 				$privilegedRoles | ConvertTo-EIDPrivRows
-
 			} else {
 				Write-Host 'No relevant service plans found.'
 			}
@@ -1443,6 +1463,7 @@ function Test-PrivilegedRoles($ctx) {
 		}
 	}
 }
+
 
 function Test-StaleUsers($ctx) {
 	New-EIDPrivReport -ctx $ctx -name 'staleUsers' -title 'Stale Users' -dataSource {
