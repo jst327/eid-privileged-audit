@@ -1597,25 +1597,25 @@ function Test-StalePasswords($ctx) {
 	}
 }
 
-function Test-StaleComputers($ctx){
-	New-EIDPrivReport -ctx $ctx -name 'staleComputers' -title 'Stale Computers' -dataSource {
+function Test-StaleDevices($ctx){
+	New-EIDPrivReport -ctx $ctx -name 'staleDevices' -title 'Stale Devices' -dataSource {
 		$staleDaysThreshold = 90
 		$now = Get-Date
-		$computers = Get-MgDevice -All
-		$staleComputers = $computers | Where-Object {
+		$devices = Get-MgDevice -All
+		$staleDevices = $devices | Where-Object {
 			($_.ApproximateLastSignInDateTime -lt $now.AddDays(-$staleDaysThreshold))
 		}
-		if ($staleComputers) {
-			$staleComputersReport = $staleComputers | Select-Object `
+		if ($staleDevices) {
+			$staleDevicesReport = $staleDevices | Select-Object `
 				DisplayName,
 				DeviceId,
 				OperatingSystem,
 				OperatingSystemVersion,
 				ApproximateLastSignInDateTime
 
-			$staleComputersReport | ConvertTo-EIDPrivRows
+			$staleDevicesReport | ConvertTo-EIDPrivRows
 		} else {
-			Write-Log -Message 'No stale computers found.'
+			Write-Log -Message 'No stale devices found.'
 		}
 	}
 }
@@ -1800,8 +1800,8 @@ function Invoke-EIDPrivReports($ctx){
 	# Stale Passwords...
 	Test-StalePasswords -ctx $ctx
 
-	# Stale Computers...
-	Test-StaleComputers -ctx $ctx
+	# Stale Devices...
+	Test-StaleDevices -ctx $ctx
 
 	# Computers with unsupported operating systems...
 	Test-UnsupportedOS -ctx $ctx
