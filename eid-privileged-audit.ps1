@@ -84,7 +84,7 @@ function Test-ModuleInstalled {
 	return $false
 }
 
-$requiredModules = @('Microsoft.Graph', 'ExchangeOnlineManagement')
+$requiredModules = @('Microsoft.Graph')
 $missingModules = @()
 
 foreach ($module in $requiredModules) {
