@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-04-11
+# Justin Tucker - 2025-01-01, 2025-05-24
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,13 +15,20 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-04-11'
+$version = '2025-05-24'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
 $Global:WarningsAndErrors = [System.Collections.ArrayList]::new()
 $Global:licenseGUID = @{}
 $Global:licenseString = @{}
+$Global:EIDPropsCache = @{
+	Users = $null
+	Devices = $null
+	Groups = $null
+	RoleDefinitions = $null
+	ServicePrincipals = $null
+}
 
 function Write-Log{
 	[CmdletBinding()]
@@ -729,72 +736,54 @@ function Get-ADPrivOSVersion($ctx, $row){
 	return $result
 }
 
-function Resolve-EIDPrivProps([string]$class, [string]$context=$null, [switch]$generated){
-	$props = [System.Collections.ArrayList]::new()
-	function Expand-EIDProp($p){
-		if($p -is [string]){
-			[void]$props.Add($p)
-		}elseif($p -is [array]){
-			$p | ForEach-Object{
-				Expand-EIDProp $_
-			}
-		}elseif($p.type -ceq 'class'){
-			if(!$class -or $class -in $p.class){
-				Expand-EIDProp $p.props
-			}
-		}elseif($p.type -ceq 'generated'){
-			if($generated){
-				Expand-EIDProp $p.props
-			}
-		}elseif($p.type -ceq 'context'){
-			if($context -and $context -in @($p.context)){
-				Expand-EIDProp $p.props
-			}
-		}else{
-			throw "Unhandled property type: $($p.type)"
+function Resolve-EIDPrivProps{
+	param (
+		[Parameter(Mandatory)]
+		[ValidateSet('Users', 'Devices', 'Groups', 'RoleDefinitions', 'ServicePrincipals')]
+		[string[]]$Type
+	)
+	$userProperties = @(
+			'AccountEnabled',
+			'AssignedLicenses',
+			'CreatedDateTime',
+			'DisplayName',
+			'Id',
+			'LastPasswordChangeDateTime',
+			'Mail',
+			'OnPremisesSyncEnabled',
+			'SignInActivity',
+			'UserPrincipalName',
+			'UserType'
+		)
+	if (-not $Global:EIDPropsCache.Users -or -not $Global:EIDPropsCache.Devices -or -not $Global:EIDPropsCache.Groups -or -not $Global:EIDPropsCache.RoleDefinitions -or -not $Global:EIDPropsCache.ServicePrincipals) {
+		Write-Log 'Initializing Microsoft Graph cache...'
+		if (-not $Global:EIDPropsCache.Users) {
+			$Global:EIDPropsCache.Users = Get-MgUser -All -Property $userProperties
 		}
+		if (-not $Global:EIDPropsCache.Devices) {
+			$Global:EIDPropsCache.Devices = Get-MgDevice -All
+		}
+		if (-not $Global:EIDPropsCache.Groups) {
+			$Global:EIDPropsCache.Groups = Get-MgGroup -All
+		}
+		if (-not $Global:EIDPropsCache.RoleDefinitions) {
+			$Global:EIDPropsCache.RoleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
+		}
+		if (-not $Global:EIDPropsCache.ServicePrincipals) {
+			$Global:EIDPropsCache.ServicePrincipals = Get-MgServicePrincipal -All
+		}
+		Write-Log 'Microsoft Graph cache initialized.'
 	}
 
-	Expand-EIDProp $ctx.EIDProps.source
-	return $props
-}
+	else {
+		Write-Log 'Microsoft Graph cache already initialized.' -Severity DEBUG
+	}
 
-function Initialize-EIDPrivProps($ctx){
-	# - https://docs.microsoft.com/en-us/windows/win32/adschema/classes-all
-	$ctx.EIDProps.source = 'objectSid', 'Name',
-		@{type='class'; class='user', 'computer'; props=
-			'Enabled',
-			@{type='generated'; props='lastLogonTimestampDate'}, 'lastLogonTimestamp',
-			'PasswordLastSet',
-			@{type='context'; context='stalePasswords'; props='RC4'},
-			'LastBadPasswordAttempt', 'PasswordExpired', 'PasswordNeverExpires', 'PasswordNotRequired', 'CannotChangePassword', 'userAccountControl'
-		},
-		'whenCreated', 'whenChanged',
-		@{type='class'; class='user', 'computer'; props=
-			'UserPrincipalName'
-		},
-		'sAMAccountName', 'DistinguishedName', 'CanonicalName',
-		'DisplayName', 'Description',
-		@{type='class'; class='user', 'computer'; props=
-			'Company', 'Title', 'Department', 'Manager', 'EmployeeID', 'EmployeeNumber',
-			'PrimaryGroupID', 'PrimaryGroup'},
-		@{type='class'; class='group'; props=
-			'GroupCategory', 'GroupScope', 'groupType'},
-		@{type='class'; class='group', 'computer'; props=
-			'ManagedBy'},
-		@{type='class'; class='computer'; props=
-			'OperatingSystem', 'OperatingSystemVersion', 'OperatingSystemServicePack', 'OperatingSystemHotfix'},
-		'ObjectClass', 'ObjectGUID', 'mS-DS-ConsistencyGuid',
-		'isCriticalSystemObject', 'ProtectedFromAccidentalDeletion'
-
-	$ctx.EIDProps.allOut = Resolve-EIDPrivProps -generated
-	$ctx.EIDProps.userIn = Resolve-EIDPrivProps 'user'
-	$ctx.EIDProps.userOut = Resolve-EIDPrivProps 'user' -generated
-	$ctx.EIDProps.compIn = Resolve-EIDPrivProps 'computer'
-	$ctx.EIDProps.compOut = Resolve-EIDPrivProps 'computer' -generated
-	$ctx.EIDProps.groupIn = Resolve-EIDPrivProps 'group'
-	$ctx.EIDProps.groupOut = Resolve-EIDPrivProps 'group' -generated
-	$ctx.EIDProps.objectIn = Resolve-EIDPrivProps 'object'
+	$result = @{}
+	foreach ($t in $Type) {
+		$result[$t] = $Global:EIDPropsCache[$t]
+	}
+	return $result
 }
 
 function ConvertTo-EIDPrivRows{
@@ -1014,7 +1003,7 @@ function Initialize-EIDPrivReports(){
 		$ctx.reportFiles['params'] = $paramsJsonPath
 	}
 
-	Initialize-EIDPrivProps $ctx
+#	Initialize-EIDPrivProps $ctx
 
 	return $ctx
 }
@@ -1088,10 +1077,11 @@ function Test-PrivilegedUsers($ctx) {
 		$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
 		$isEntraP2 = $servicePlans -contains 'AAD_PREMIUM_P2'
 		$isEntraP1 = $servicePlans -contains 'AAD_PREMIUM'
-		$allUsers = Get-MgUser -All -Property CreatedDateTime, DisplayName, Id, LastPasswordChangeDateTime, OnPremisesSyncEnabled, SignInActivity, UserPrincipalName, UserType
-		$allGroups = Get-MgGroup -All
-		$allServicePrincipalIds = (Get-MgServicePrincipal -All).Id
-		$role = Get-MgRoleManagementDirectoryRoleDefinition -All
+		$propsCache = Resolve-EIDPrivProps -Type Users, Groups, RoleDefinitions, ServicePrincipals
+		$allUsers = $propsCache.Users
+		$allGroups = $propsCache.Groups
+		$allServicePrincipalIds = ($propsCache.ServicePrincipals).Id
+		$role = $propsCache.RoleDefinitions
 
 		try {
 			function Get-RoleDetails {
@@ -1123,7 +1113,7 @@ function Test-PrivilegedUsers($ctx) {
 					} elseif ($principalId -in $allServicePrincipalIds) {
 						Write-Log -Message "PrincipalId $principalId identified as Service Principal." -Severity DEBUG
 						try {
-							$principal = Get-MgServicePrincipal -ServicePrincipalId $principalId -Property DisplayName, AppId, ServicePrincipalType
+							$principal = $propsCache.ServicePrincipals | Where-Object {$_.Id -eq $principalId} | Select-Object -Property DisplayName, AppId, ServicePrincipalType
 							$userType = $null
 							$groupType = $null
 							$serviceType = $principal.ServicePrincipalType
@@ -1314,7 +1304,7 @@ function Test-PrivilegedRoles($ctx) {
 	New-EIDPrivReport -ctx $ctx -name 'privRoles' -title 'Privileged Roles' -dataSource {
 		try {
 			$servicePlans = (Get-MgSubscribedSku).ServicePlans.ServicePlanName
-			$roleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
+			$roleDefinitions = (Resolve-EIDPrivProps -Type RoleDefinitions).RoleDefinitions
 			$roleDefDict = @{}
 			foreach ($role in $roleDefinitions) {
 				$roleDefDict[$role.Id] = $role
@@ -1469,19 +1459,7 @@ function Test-StaleUsers($ctx) {
 	New-EIDPrivReport -ctx $ctx -name 'staleUsers' -title 'Stale Users' -dataSource {
 		try {
 			$staleUsers = [System.Collections.Generic.List[Object]]::new()
-			$properties = @(
-				'Id',
-				'DisplayName',
-				'Mail',
-				'UserPrincipalName',
-				'UserType',
-				'AccountEnabled',
-				'SignInActivity',
-				'CreatedDateTime',
-				'LastPasswordChangeDateTime',
-				'AssignedLicenses'
-			)
-			$allUsers = Get-MgUser -All -Property $properties | Select-Object $properties
+			$allUsers = (Resolve-EIDPrivProps -Type Users).Users
 			foreach ($user in $allUsers) {
 				$LastSuccessfulSignInDate = if ($user.SignInActivity.LastSuccessfulSignInDateTime) {
 					$user.SignInActivity.LastSuccessfulSignInDateTime
@@ -1537,17 +1515,7 @@ function Test-StalePasswords($ctx) {
 	New-EIDPrivReport -ctx $ctx -name 'stalePasswords' -title 'Stale Passwords' -dataSource {
 		try {
 			$stalePasswords = [System.Collections.Generic.List[Object]]::new()
-			$properties = @(
-				'DisplayName',
-				'Mail',
-				'UserPrincipalName',
-				'UserType',
-				'AccountEnabled',
-				'LastPasswordChangeDateTime'
-				'CreatedDateTime',
-				'AssignedLicenses'
-			)
-			$allUsers = Get-MgUser -All -Property $properties | Select-Object $properties
+			$allUsers = (Resolve-EIDPrivProps -Type Users).Users
 			foreach ($user in $allUsers) {
 				$LastPasswordChangeDateTime = if ($user.LastPasswordChangeDateTime) {
 					$user.LastPasswordChangeDateTime
@@ -1601,7 +1569,7 @@ function Test-StaleDevices($ctx){
 	New-EIDPrivReport -ctx $ctx -name 'staleDevices' -title 'Stale Devices' -dataSource {
 		$staleDaysThreshold = 90
 		$now = Get-Date
-		$devices = Get-MgDevice -All
+		$devices = (Resolve-EIDPrivProps -Type Devices).Devices
 		$staleDevices = $devices | Where-Object {
 			($_.ApproximateLastSignInDateTime -lt $now.AddDays(-$staleDaysThreshold))
 		}
@@ -1624,7 +1592,7 @@ function Test-UnsupportedOS($ctx){
 	$ctx.osVersions = Initialize-ADPrivOSVersions
 
 	New-EIDPrivReport -ctx $ctx -name 'unsupportedOS' -title 'Unsupported Operating Systems' -dataSource {
-		Get-MgDevice -All `
+		(Resolve-EIDPrivProps -Type Devices).Devices `
 			| ForEach-Object {
 				$row = $_
 				$osVer = Get-ADPrivOSVersion $ctx $row
@@ -1651,12 +1619,12 @@ function Test-UnsupportedOS($ctx){
 
 function Test-UserRegistration($ctx){
 	New-EIDPrivReport -ctx $ctx -name 'userRegistration' -title 'User Registration' -dataSource {
-		$userDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
-		$allUsers = @()
-		foreach ($userDetail in $userDetails) {
-			$user = Get-MgUser -UserId $userDetail.Id
-
-			$allUsers += [PSCustomObject]@{
+		$regDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
+		$allUsers = (Resolve-EIDPrivProps -Type Users).Users
+		$userDetails = [System.Collections.Generic.List[Object]]::new()
+		foreach ($userDetail in $regDetails) {
+			$user = $allUsers | Where-Object {$_.Id -eq $userDetail.Id}
+			$obj = [PSCustomObject]@{
 				'ObjectId' = $user.Id
 				'DisplayName' = $user.DisplayName
 				'UserPrincipalName' = $user.UserPrincipalName
@@ -1669,8 +1637,9 @@ function Test-UserRegistration($ctx){
 				'IsSSPRRegistered?' = $userDetail.IsSsprRegistered
 				'LastUpdated' = $userDetail.LastUpdatedDateTime
 			}
+			$userDetails.Add($obj)
 		}
-		$allUsers | ConvertTo-EIDPrivRows
+		$userDetails | ConvertTo-EIDPrivRows
 	}
 }
 
@@ -1861,6 +1830,7 @@ function Invoke-EIDPrivReports($ctx){
 function Invoke-EIDPrivMain(){
 	try{
 		$ctx = Initialize-EIDPrivReports
+		Resolve-EIDPrivProps -Type Users, Devices, Groups, RoleDefinitions, ServicePrincipals
 		Invoke-EIDPrivReports -ctx $ctx
 		Disconnect-MgGraph
 		Write-Log 'Done!'
