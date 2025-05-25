@@ -28,6 +28,7 @@ $Global:EIDPropsCache = @{
 	Groups = $null
 	RoleDefinitions = $null
 	ServicePrincipals = $null
+	SubscribedSKUs = $null
 }
 
 function Write-Log{
@@ -739,7 +740,7 @@ function Get-ADPrivOSVersion($ctx, $row){
 function Resolve-EIDPrivProps{
 	param (
 		[Parameter(Mandatory)]
-		[ValidateSet('Users', 'Devices', 'Groups', 'RoleDefinitions', 'ServicePrincipals')]
+		[ValidateSet('Users', 'Devices', 'Groups', 'RoleDefinitions', 'ServicePrincipals', 'SubscribedSKUs')]
 		[string[]]$Type
 	)
 	$userProperties = @(
@@ -755,25 +756,33 @@ function Resolve-EIDPrivProps{
 			'UserPrincipalName',
 			'UserType'
 		)
-	if (-not $Global:EIDPropsCache.Users -or -not $Global:EIDPropsCache.Devices -or -not $Global:EIDPropsCache.Groups -or -not $Global:EIDPropsCache.RoleDefinitions -or -not $Global:EIDPropsCache.ServicePrincipals) {
-		Write-Log 'Initializing Microsoft Graph cache...'
-		if (-not $Global:EIDPropsCache.Users) {
-			$Global:EIDPropsCache.Users = Get-MgUser -All -Property $userProperties
+	if (-not $Global:EIDPropsCache.Users -or -not `
+		$Global:EIDPropsCache.Devices -or -not `
+		$Global:EIDPropsCache.Groups -or -not `
+		$Global:EIDPropsCache.RoleDefinitions -or -not `
+		$Global:EIDPropsCache.ServicePrincipals -or -not `
+		$Global:EIDPropsCache.SubscribedSKUs) {
+			Write-Log 'Initializing Microsoft Graph cache...'
+			if (-not $Global:EIDPropsCache.Users) {
+				$Global:EIDPropsCache.Users = Get-MgUser -All -Property $userProperties
+			}
+			if (-not $Global:EIDPropsCache.Devices) {
+				$Global:EIDPropsCache.Devices = Get-MgDevice -All
+			}
+			if (-not $Global:EIDPropsCache.Groups) {
+				$Global:EIDPropsCache.Groups = Get-MgGroup -All
+			}
+			if (-not $Global:EIDPropsCache.RoleDefinitions) {
+				$Global:EIDPropsCache.RoleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
+			}
+			if (-not $Global:EIDPropsCache.ServicePrincipals) {
+				$Global:EIDPropsCache.ServicePrincipals = Get-MgServicePrincipal -All
+			}
+			if (-not $Global:EIDPropsCache.SubscribedSKUs) {
+				$Global:EIDPropsCache.SubscribedSKUs = Get-MgSubscribedSku -All
+			}
+			Write-Log 'Microsoft Graph cache initialized.'
 		}
-		if (-not $Global:EIDPropsCache.Devices) {
-			$Global:EIDPropsCache.Devices = Get-MgDevice -All
-		}
-		if (-not $Global:EIDPropsCache.Groups) {
-			$Global:EIDPropsCache.Groups = Get-MgGroup -All
-		}
-		if (-not $Global:EIDPropsCache.RoleDefinitions) {
-			$Global:EIDPropsCache.RoleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
-		}
-		if (-not $Global:EIDPropsCache.ServicePrincipals) {
-			$Global:EIDPropsCache.ServicePrincipals = Get-MgServicePrincipal -All
-		}
-		Write-Log 'Microsoft Graph cache initialized.'
-	}
 
 	else {
 		Write-Log 'Microsoft Graph cache already initialized.' -Severity DEBUG
@@ -1179,7 +1188,7 @@ function Test-PrivilegedUsers($ctx) {
 						'MemberDepth' = $memberDepth
 						'ObjectId' = if($null -ne $principal -and $principal.PSObject.Properties.Match('Id').Count -gt 0) {$principal.Id} else {"Unknown (PrincipalId: $principalId)"}
 						'DisplayName' = if($null -ne $principal -and $principal.PSObject.Properties.Match('DisplayName').Count -gt 0) {$principal.DisplayName} else {"Unknown Service Principal"}
-						'OnPremisesSyncEnabled' = if($null -ne $principal -and $principal.PSObject.Properties.Match('OnPremisesSyncEnabled').Count -gt 0) {$principal.OnPremisesSyncEnabled} else {$null}
+						'OnPremisesSyncEnabled' = if($principal.PSObject.Properties['OnPremisesSyncEnabled'] -and $principal.OnPremisesSyncEnabled -eq $true) {'Yes'} else {'No'}
 						'Type' = if($null -ne $userType) {$userType} elseif ($null -ne $serviceType) {$serviceType} elseif ($groupType -eq 'Unified') {'Microsoft 365 Group'} elseif (-not $groupType -or $groupType.Count -eq 0) {'Security Group'} else {'Unknown'}
 						'ParentGroup' = $parentGroupName
 						'CreatedDateTime' = if($null -ne $principal -and $principal.PSObject.Properties.Match('CreatedDateTime').Count -gt 0) {$principal.CreatedDateTime} else {$null}
@@ -1668,9 +1677,12 @@ function Get-LicenseNames {
 
 function Get-UserLicenses {
 	Get-LicenseNames
+	$propsCache = Resolve-EIDPrivProps -Type Users, SubscribedSKUs
+	$allUsers = $propsCache.Users
+	$allSKUs = $propsCache.SubscribedSKUs
 	try {
 		$licensedUsers = [System.Collections.Generic.List[Object]]::new()
-		$users = Get-MgUser -Filter 'assignedLicenses/$count ne 0' -ConsistencyLevel eventual -CountVariable licensedUserCount -All -Select AccountEnabled, AssignedLicenses, DisplayName, Id, UserPrincipalName, UserType
+		$users = $allUsers | Where-Object { $_.AssignedLicenses.Count -gt 0 }
 		foreach ($user in $users) {
 			foreach ($license in $user.AssignedLicenses) {
 				$obj = [PSCustomObject]@{
@@ -1679,7 +1691,11 @@ function Get-UserLicenses {
 					'UserPrincipalName' = $user.UserPrincipalName
 					'Type' = $user.UserType
 					'AccountEnabled' = $user.AccountEnabled
-					'License' = $Global:licenseGUID[$license.SkuId]
+					'License' = if($Global:licenseGUID[$license.SkuId]) {
+						$Global:licenseGUID[$license.SkuId]
+					} else {
+						$allSKUs | Where-Object { $_.SkuId -eq $license.SkuId } | Select-Object -ExpandProperty SkuPartNumber
+					}
 				}
 				$licensedUsers.Add($obj)
 			}
@@ -1696,18 +1712,23 @@ function Get-UserLicenses {
 
 function Get-TenantLicenses {
 	Get-LicenseNames
+	$tenantLicenses = (Resolve-EIDPrivProps -Type SubscribedSKUs).SubscribedSKUs
 	try {
-		$tenantLicenses = Get-MgSubscribedSKU -All | Select-Object SkuPartNumber, SkuId, @{Name = 'ActiveUnits'; Expression = { ($_.PrepaidUnits).Enabled } }, ConsumedUnits, CapabilityStatus |
+		$tenantLicenses = $tenantLicenses | Select-Object SkuPartNumber, SkuId, @{Name = 'ActiveUnits'; Expression = { ($_.PrepaidUnits).Enabled } }, ConsumedUnits, CapabilityStatus |
 		ForEach-Object {
 			[PSCustomObject]@{
-				'License' = $Global:licenseString.($_.SkuPartNumber)
+				'License' = if($Global:licenseString[$_.SkuPartNumber]) {
+					$Global:licenseString[$_.SkuPartNumber]
+				} else {
+					$_.SkuPartNumber
+				}
 				'Total' = $_.ActiveUnits
 				'In Use' = $_.ConsumedUnits
 				'Available' = $_.ActiveUnits - $_.ConsumedUnits
 				'CapabilityStatus' = if ($_.CapabilityStatus) { $_.CapabilityStatus } else { 'Unknown' }
 			}
 		}
-		$tenantLicenses
+		$tenantLicenses | Sort-Object 'License'
 	} catch {
 		Write-Log -Message "Error creating 'Tenant Licenses' report. Error: $_" -Severity ERROR
 	}
@@ -1835,7 +1856,7 @@ function Invoke-EIDPrivReports($ctx){
 function Invoke-EIDPrivMain(){
 	try{
 		$ctx = Initialize-EIDPrivReports
-		Resolve-EIDPrivProps -Type Users, Devices, Groups, RoleDefinitions, ServicePrincipals
+		Resolve-EIDPrivProps -Type Users, Devices, Groups, RoleDefinitions, ServicePrincipals, SubscribedSKUs
 		Invoke-EIDPrivReports -ctx $ctx
 		Disconnect-MgGraph
 		Write-Log 'Done!'
