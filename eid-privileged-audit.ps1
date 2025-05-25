@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-05-24
+# Justin Tucker - 2025-01-01, 2025-05-25
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-05-24'
+$version = '2025-05-25'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
