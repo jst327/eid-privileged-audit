@@ -1292,7 +1292,7 @@ function Test-PrivilegedUsers($ctx) {
 		}
 
 		if ($invalidRoles) {
-			Write-Log 'Found entries missing RoleName. Adding them at the end.' -Severity WARN
+			Write-Log 'Found entries missing RoleName. Adding them at the end.' -Severity DEBUG
 			$orderedList += $invalidRoles | Sort-Object DisplayName
 		}
 
@@ -1582,6 +1582,11 @@ function Test-StaleDevices($ctx){
 				ApproximateLastSignInDateTime
 
 			$staleDevicesReport | ConvertTo-EIDPrivRows
+			if ($staleDevices.Count -gt 0 -and $staleDevices.Count -lt 2) {
+				Write-Log -Message "$($staleDevices.Count) stale device found." -Severity WARN
+			} elseif ($staleDevices.Count -gt 1) {
+				Write-Log -Message "$($staleDevices.Count) stale devices found." -Severity WARN
+			}
 		} else {
 			Write-Log -Message 'No stale devices found.'
 		}
