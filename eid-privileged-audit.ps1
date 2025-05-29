@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-05-25
+# Justin Tucker - 2025-01-01, 2025-05-29
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-05-25'
+$version = '2025-05-29'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -1625,7 +1625,7 @@ function Test-UnsupportedOS($ctx){
 						@{n='OS EOS Max Life'; e={$osVer.EndOfServicingMaxLife}}
 					$row
 				}
-			}	| Sort-Object -Property 'OS EOS Mainstream Life', 'lastLogonTimestamp' `
+			} | Sort-Object -Property 'OS EOS Mainstream Life', 'lastLogonTimestamp' `
 			| ConvertTo-EIDPrivRows -property (@('Name', 'OperatingSystem', 'OperatingSystemVersion', 'OS Version', 'OS Build', 'OS Build Ver', 'OS Availability',
 				'OS EOS Mainstream', 'OS EOS Mainstream Life', 'OS EOS Extended', 'OS EOS Extended Life', 'OS EOS Max Life', 'lastLogonTimestampDate'))
 	}
@@ -1717,10 +1717,11 @@ function Get-TenantLicenses {
 		$tenantLicenses = $tenantLicenses | Select-Object SkuPartNumber, SkuId, @{Name = 'ActiveUnits'; Expression = { ($_.PrepaidUnits).Enabled } }, ConsumedUnits, CapabilityStatus |
 		ForEach-Object {
 			[PSCustomObject]@{
+				'SKU' = $_.SkuPartNumber
 				'License' = if($Global:licenseString[$_.SkuPartNumber]) {
 					$Global:licenseString[$_.SkuPartNumber]
-				} else {
-					$_.SkuPartNumber
+				} else { 
+					$null
 				}
 				'Total' = $_.ActiveUnits
 				'In Use' = $_.ConsumedUnits
