@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-05-29
+# Justin Tucker - 2025-01-01, 2025-06-07
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-05-29'
+$version = '2025-06-07'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -26,6 +26,7 @@ $Global:EIDPropsCache = @{
 	Users = $null
 	Devices = $null
 	Groups = $null
+	NamedLocations = $null
 	RoleDefinitions = $null
 	ServicePrincipals = $null
 	SubscribedSKUs = $null
@@ -740,7 +741,7 @@ function Get-ADPrivOSVersion($ctx, $row){
 function Resolve-EIDPrivProps{
 	param (
 		[Parameter(Mandatory)]
-		[ValidateSet('Users', 'Devices', 'Groups', 'RoleDefinitions', 'ServicePrincipals', 'SubscribedSKUs')]
+		[ValidateSet('Users', 'Devices', 'Groups', 'NamedLocations', 'RoleDefinitions', 'ServicePrincipals', 'SubscribedSKUs')]
 		[string[]]$Type
 	)
 	$userProperties = @(
@@ -759,6 +760,7 @@ function Resolve-EIDPrivProps{
 	if (-not $Global:EIDPropsCache.Users -or -not `
 		$Global:EIDPropsCache.Devices -or -not `
 		$Global:EIDPropsCache.Groups -or -not `
+		$Global:EIDPropsCache.NamedLocations -or -not `
 		$Global:EIDPropsCache.RoleDefinitions -or -not `
 		$Global:EIDPropsCache.ServicePrincipals -or -not `
 		$Global:EIDPropsCache.SubscribedSKUs) {
@@ -771,6 +773,9 @@ function Resolve-EIDPrivProps{
 			}
 			if (-not $Global:EIDPropsCache.Groups) {
 				$Global:EIDPropsCache.Groups = Get-MgGroup -All
+			}
+			if (-not $Global:EIDPropsCache.NamedLocations) {
+				$Global:EIDPropsCache.NamedLocations = Get-MgIdentityConditionalAccessNamedLocation -All
 			}
 			if (-not $Global:EIDPropsCache.RoleDefinitions) {
 				$Global:EIDPropsCache.RoleDefinitions = Get-MgRoleManagementDirectoryRoleDefinition -All
@@ -1735,6 +1740,147 @@ function Get-TenantLicenses {
 	}
 }
 
+function Test-CAPolicies($ctx) {
+	New-EIDPrivReport -ctx $ctx -name 'caPolicies' -title 'Conditional Access Policies' -dataSource {
+		try {
+			$policies = Get-MgIdentityConditionalAccessPolicy -All
+			if ($policies.Count -eq 0) {
+				Write-Log -Message 'No Conditional Access policies found.' -Severity INFO
+				return @()
+			}
+
+			$cache = Resolve-EIDPrivProps -Type @('Users', 'Groups', 'RoleDefinitions', 'ServicePrincipals', 'NamedLocations')
+			$userMap  = $cache.Users | Group-Object -Property Id -AsHashTable
+			$groupMap = $cache.Groups | Group-Object -Property Id -AsHashTable
+			$roleMap  = $cache.RoleDefinitions | Group-Object -Property Id -AsHashTable
+			$appMap   = $cache.ServicePrincipals | Group-Object -Property AppId -AsHashTable
+			$locationMap = $cache.NamedLocations | Group-Object -Property Id -AsHashTable
+
+			function Resolve-Ids {
+				param (
+					[string[]]$Ids,
+					[hashtable]$LookupMap
+				)
+				if (-not $Ids) { return @() }
+				$Ids | ForEach-Object {
+					if ($_ -eq 'All') {'All'}
+					elseif ($_ -eq 'GuestsOrExternalUsers') {'GuestsOrExternalUsers'}
+					elseif ($LookupMap.ContainsKey($_)) {$LookupMap[$_].DisplayName}
+					elseif ($_ -eq $null -or $_ -eq '') {'None'}
+					else {"Unknown: $_"}
+				}
+			}
+
+			function Resolve-AppIds {
+				param (
+					[string[]]$Ids,
+					[hashtable]$LookupMap
+				)
+				if (-not $Ids) { return @() }
+				$Ids | ForEach-Object {
+					if ($_ -eq 'All') { 'All Cloud Apps' }
+					elseif ($_ -eq 'Office365') { 'Office 365' }
+					elseif ($LookupMap.ContainsKey($_)) { $LookupMap[$_].DisplayName }
+					else { "Unknown App: $_" }
+				}
+			}
+
+			function Resolve-Locations {
+				param (
+					[string[]]$Ids,
+					[hashtable]$LookupMap
+				)
+				if (-not $Ids) { return @() }
+				$Ids | ForEach-Object {
+					if ($LookupMap.ContainsKey($_)) { $LookupMap[$_].DisplayName }
+					elseif ($_ -eq 'AllTrusted') { 'All Trusted Locations' }
+					elseif ($_ -eq 'All') { 'All Locations' }
+					else {"Unknown Location: $_"}
+				}
+			}
+
+
+			$policyList = foreach ($policy in $policies) {
+				$includedUsers = Resolve-Ids -Ids $policy.Conditions.Users.IncludeUsers -LookupMap $userMap
+				$excludedUsers = Resolve-Ids -Ids $policy.Conditions.Users.ExcludeUsers -LookupMap $userMap
+				$includedGroups = Resolve-Ids -Ids $policy.Conditions.Users.IncludeGroups -LookupMap $groupMap
+				$excludedGroups = Resolve-Ids -Ids $policy.Conditions.Users.ExcludeGroups -LookupMap $groupMap
+				$includedRoles = Resolve-Ids -Ids $policy.Conditions.Users.IncludeRoles -LookupMap $roleMap
+				$excludedRoles = Resolve-Ids -Ids $policy.Conditions.Users.ExcludeRoles -LookupMap $roleMap
+				$includedApps = Resolve-AppIds -Ids $policy.Conditions.Applications.IncludeApplications -LookupMap $appMap
+				$excludedApps = Resolve-AppIds -Ids $policy.Conditions.Applications.ExcludeApplications -LookupMap $appMap
+				$includedLocations = Resolve-Locations -Ids $policy.Conditions.Locations.IncludeLocations -LookupMap $locationMap
+				$excludedLocations = Resolve-Locations -Ids $policy.Conditions.Locations.ExcludeLocations -LookupMap $locationMap
+				$session = $policy.SessionControls
+
+				[PSCustomObject]@{
+					'Id' = $policy.Id
+					'DisplayName' = $policy.DisplayName
+					'State' = $policy.State
+					'CreatedDateTime' = if ($policy.CreatedDateTime) { [datetime]::Parse($policy.CreatedDateTime).ToLocalTime() } else { $null }
+					'ModifiedDateTime' = if ($policy.ModifiedDateTime) { [datetime]::Parse($policy.ModifiedDateTime).ToLocalTime() } else { $null }
+					'UsersIncluded' = $includedUsers -join ', '
+					'UsersExcluded' = $excludedUsers -join ', '
+					'GroupsIncluded' = $includedGroups -join ', '
+					'GroupsExcluded' = $excludedGroups -join ', '
+					'RolesIncluded' = $includedRoles -join ', '
+					'RolesExcluded' = $excludedRoles -join ', '
+					'AppsIncluded' = $includedApps -join ', '
+					'AppsExcluded' = $excludedApps -join ', '
+					'AppFilterMode' = $policy.Conditions.Applications.ApplicationFilter.Mode
+					'AppFilterRule' = $policy.Conditions.Applications.ApplicationFilter.Rule
+					'PlatformsIncluded' = ($policy.Conditions.Platforms.IncludePlatforms -join ', ')
+					'PlatformsExcluded' = ($policy.Conditions.Platforms.ExcludePlatforms -join ', ')
+					'LocationsIncluded' = $includedLocations -join ', '
+					'LocationsExcluded' = $excludedLocations -join ', '
+					'ClientAppTypes' = ($policy.Conditions.ClientAppTypes -join ', ')
+					'GrantControls' = ($policy.GrantControls.BuiltInControls -join ', ')
+					'GrantOperator' = $policy.GrantControls.Operator
+					'Session_SignInFrequency' = if ($session.SignInFrequency.IsEnabled -and $null -ne $session.SignInFrequency.Value) {
+						if ($session.SignInFrequency.Type -eq 'Hours' -and $session.SignInFrequency.Value -eq 1) {
+							"Every $($session.SignInFrequency.Value) hour"
+						} elseif ($session.SignInFrequency.Type -eq 'Hours' -and $session.SignInFrequency.Value -gt 1) {
+							"Every $($session.SignInFrequency.Value) hours"
+						} elseif ($session.SignInFrequency.Type -eq 'Days' -and $session.SignInFrequency.Value -eq 1) {
+							"Every $($session.SignInFrequency.Value) day"
+						} elseif ($session.SignInFrequency.Type -eq 'Days' -and $session.SignInFrequency.Value -gt 1) {
+							"Every $($session.SignInFrequency.Value) days"
+						} else {
+							'Every time'
+						}
+					} elseif ($session.SignInFrequency.IsEnabled -and $null -eq $session.SignInFrequency.Value) {
+						'Every time'
+					} else {
+						'Disabled'
+					}
+
+					'Session_PersistentBrowser' = if ($session.PersistentBrowser.IsEnabled) {
+						$session.PersistentBrowser.Mode
+					} else {'Disabled'}
+
+					'Session_CloudAppSecurity' = if ($session.CloudAppSecurity.IsEnabled) {
+						$session.CloudAppSecurity.Mode
+					} else {'Disabled'}
+
+					'Session_AppEnforcedRestrictions' = if ($session.ApplicationEnforcedRestrictions.IsEnabled) {
+						'Enabled'
+					} else {'Disabled'}
+
+					'Session_DisableResilienceDefaults' = if ($session.DisableResilienceDefaults) {
+						'True'
+					} else {'False'}
+				}
+			}
+
+			return $policyList | Sort-Object DisplayName
+		}
+		catch {
+			Write-Log -Message "Error retrieving Conditional Access policies: $_" -Severity ERROR
+			return @()
+		}
+	} | ConvertTo-EIDPrivRows
+}
+
 function Test-AuditStatus {
 	try {
 		$auditConfig = Get-AdminAuditLogConfig | Format-List UnifiedAuditLogIngestionEnabled
@@ -1800,7 +1946,7 @@ function Invoke-EIDPrivReports($ctx){
 	Test-StaleDevices -ctx $ctx
 
 	# Computers with unsupported operating systems...
-	Test-UnsupportedOS -ctx $ctx
+	#Test-UnsupportedOS -ctx $ctx
 
 	# User Registration...
 	Test-UserRegistration -ctx $ctx
@@ -1816,6 +1962,9 @@ function Invoke-EIDPrivReports($ctx){
 		Get-TenantLicenses `
 			| ConvertTo-EIDPrivRows
 	}
+
+	# Conditional Access Policies...
+	Test-CAPolicies -ctx $ctx
 
 	# Audit Status...
 	#Test-AuditStatus
@@ -1857,7 +2006,7 @@ function Invoke-EIDPrivReports($ctx){
 function Invoke-EIDPrivMain(){
 	try{
 		$ctx = Initialize-EIDPrivReports
-		Resolve-EIDPrivProps -Type Users, Devices, Groups, RoleDefinitions, ServicePrincipals, SubscribedSKUs
+		#Resolve-EIDPrivProps -Type Users, Devices, Groups, RoleDefinitions, ServicePrincipals, SubscribedSKUs
 		Invoke-EIDPrivReports -ctx $ctx
 		Disconnect-MgGraph
 		Write-Log 'Done!'
