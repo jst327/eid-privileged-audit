@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-06-07
+# Justin Tucker - 2025-01-01, 2025-06-14
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-06-07'
+$version = '2025-06-14'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -1589,11 +1589,12 @@ function Test-StaleDevices($ctx){
 		}
 		if ($staleDevices) {
 			$staleDevicesReport = $staleDevices | Select-Object `
-				DisplayName,
 				DeviceId,
+				DisplayName,
 				OperatingSystem,
 				OperatingSystemVersion,
-				ApproximateLastSignInDateTime
+				ApproximateLastSignInDateTime,
+				@{n='DaysSinceLastSignIn'; e={(New-TimeSpan -Start $_.ApproximateLastSignInDateTime -End $now).Days}}
 
 			$staleDevicesReport | ConvertTo-EIDPrivRows
 			if ($staleDevices.Count -gt 0 -and $staleDevices.Count -lt 2) {
