@@ -30,6 +30,7 @@ $Global:EIDPropsCache = @{
 	RoleDefinitions = $null
 	ServicePrincipals = $null
 	SubscribedSKUs = $null
+	DefaultUserRolePermissions = $null
 }
 
 function Write-Log{
@@ -93,7 +94,7 @@ function Test-ModuleInstalled {
 	return $false
 }
 
-$requiredModules = @('Microsoft.Graph')
+$requiredModules = @('Microsoft.Graph','Microsoft.Graph.Beta')
 $missingModules = @()
 
 foreach ($module in $requiredModules) {
@@ -135,613 +136,10 @@ function Connect-MicrosoftGraph {
 
 Connect-MicrosoftGraph
 
-function Connect-ToExchangeOnline {
-	try {
-		Connect-ExchangeOnline -ShowBanner:$false
-	} catch {
-		Write-Log -Message 'Error connecting to Exchange Online' -Severity ERROR
-		Add-ToWarningsAndErrors -Type Error -Message 'Error connecting to Exchange Online' -Function 'Connect to Exchange Online'
-	}
-}
-
-#Connect-ToExchangeOnline
-
-$osVersionPattern = [regex]::new('(\d+\.\d+)(?: \((\d+)\))?')
-
-function Initialize-ADPrivOSVersions(){
-	$osVersions = @{
-		# - https://learn.microsoft.com/en-us/lifecycle/products/
-		'4.0' = @{
-			'Categories' = @{
-				'Windows NT' = 1
-			}
-			'Builds' = @{
-				'' = @{
-					'Version' = ''
-					'Availability' = '1996-08-24'
-					'EndOfServicing' = @{
-						1 = @{
-							'Mainstream' = '2002-12-31'
-							'Extended' = '2004-12-31'
-						}
-					}
-				}
-			}
-		}
-		'5.0' = @{
-			'Categories' = @{
-				'Windows 2000 Professional' = 1
-				'Windows 2000 Server' = 1
-			}
-			'Builds' = @{
-				2195 = @{
-					'Version' = ''
-					'Availability' = '2000-02-17'
-					'EndOfServicing' = @{
-						1 = @{
-							'Mainstream' = '2005-06-30'
-							'Extended' = '2010-07-13'
-						}
-					}
-				}
-			}
-		}
-		'5.1' = @{
-			'Categories' = @{
-				'Windows XP Professional' = 1
-				'Windows XP Tablet PC Edition' = 2
-			}
-			'Builds' = @{
-				2600 = @{
-					# This currently does not take into account Service Packs, given they are
-					#   not reflected in the OperatingSystemVersion for Windows XP.
-					'Version' = ''
-					'Availability' = @{
-						1 = '2001-12-31'
-						2 = '2003-02-11'
-					}
-					'EndOfServicing' = @{
-						1 = @{
-							'Mainstream' = '2009-04-14'
-							'Extended' = '2014-04-08'
-						}
-						2 = @{
-							'Mainstream' = '2009-04-14'
-							'Extended' = '2014-04-08'
-						}
-					}
-				}
-			}
-		}
-		'5.2' = @{
-			'Categories' = @{
-				'Windows Server 2003' = 1
-			}
-			'Builds' = @{
-				3790 = @{
-					# This currently does not take into account Service Packs, given they are
-					#   not reflected in the OperatingSystemVersion for Windows Server 2013.
-					'Version' = ''
-					'Availability' = '2003-05-28'
-					'EndOfServicing' = @{
-						1 = @{
-							'Mainstream' = '2010-07-13'
-							'Extended' = '2015-07-14'
-						}
-					}
-				}
-			}
-		}
-		'6.0' = @{
-			'Categories' = @{
-				'Windows Vista™ Business' = 0
-				'Windows Server® 2008 Datacenter' = 1
-				'Windows Server® 2008 Enterprise' = 1
-				'Windows Server® 2008 Standard' = 1
-				'Windows® Storage Server 2008 Standard' = 2
-			}
-			'Builds' = @{
-				6000 = @{
-					'Version' = ''
-					'Availability' = @{
-						0 = '2007-01-25'
-						1 = '2008-05-06'
-					}
-					'EndOfServicing' = @{
-						0 = '2010-04-13'
-						1 = '2011-07-12'
-					}
-				}
-				6001 = @{
-					'Version' = ''
-					'Availability' = @{
-						0 = '2008-02-04'
-						1 = '2008-05-06'
-					}
-					'EndOfServicing' = @{
-						0 = '2011-07-12'
-						1 = '2011-07-12'
-					}
-				}
-				6002 = @{
-					'Version' = ''
-					'Availability' = @{
-						0 = '2009-04-29'
-						1 = '2009-04-29'
-						2 = '2009-07-19'
-					}
-					'EndOfServicing' = @{
-						0 = @{
-							'Mainstream' = '2012-04-10'
-							'Extended' = '2017-04-11'
-						}
-						1 = @{
-							'Mainstream' = '2015-01-13'
-							'Extended' = '2020-01-14'
-						}
-						2 = @{
-							'Mainstream' = '2015-01-13'
-							'Extended' = '2020-01-14'
-						}
-					}
-				}
-				#6003 = 6002, override below.
-			}
-		}
-		'6.1' = @{
-			'Categories' = @{
-				'Windows 7 Enterprise' = 1
-				'Windows 7 Professional N' = 1
-				'Windows 7 Professional' = 1
-				'Windows 7 Ultimate N' = 1
-				'Windows 7 Ultimate' = 1
-				'Windows Embedded Standard' = 2
-				'Windows Server 2008 R2 Datacenter' = 1
-				'Windows Server 2008 R2 Enterprise' = 1
-				'Windows Server 2008 R2 Standard' = 1
-				'Windows Server 2008 HPC Edition' = 3
-				'Hyper-V Server' = 100
-			}
-			'Builds' = @{
-				7600 = @{
-					'Version' = ''
-					'Availability' = @{
-						1 = '2009-10-22'
-						2 = '2010-07-29'
-						3 = '2010-10-17'
-						100 = '2009-10-22'
-					}
-					'EndOfServicing' = @{
-						1 = '2013-04-09'
-						2 = '2013-04-09'
-						3 = '2013-04-09'
-						100 = '2012-04-10'
-					}
-				}
-				7601 = @{
-					'Version' = ''
-					'Availability' = @{
-						1 = '2011-02-22'
-						2 = '2011-02-28'
-						3 = '2011-02-22'
-						100 = '2011-04-12'
-					}
-					'EndOfServicing' = @{
-						1 = @{
-							'Mainstream' = '2015-01-13'
-							'Extended' = '2020-01-14'
-						}
-						2 = @{
-							'Mainstream' = '2015-10-13'
-							'Extended' = '2020-10-13'
-						}
-						3 = @{
-							'Mainstream' = '2015-01-13'
-							'Extended' = '2020-04-14'
-						}
-						100 = @{
-							'Mainstream' = '2014-01-14'
-							'Extended' = '2020-01-14'
-						}
-					}
-				}
-			}
-		}
-		'6.2' = @{
-			'Categories' = @{
-				'Hyper-V Server 2012' = 2
-				'Windows 8 Enterprise' = 1
-				'Windows 8 Pro' = 1
-				'Windows Server 2012 Datacenter' = 2
-				'Windows Server 2012 Standard' = 2
-				'Windows Storage Server 2012 Standard' = 3
-			}
-			'Builds' = @{
-				9200 = @{
-					'Version' = ''
-					'Availability' = '2012-10-30'
-					'EndOfServicing' = @{
-						1 = '2016-01-12'
-						2 = @{
-							'Mainstream' = '2018-10-09'
-							'Extended' = '2023-10-10'
-						}
-						3 = @{
-							'Mainstream' = '2018-10-09'
-							'Extended' = '2023-10-10'
-						}
-					}
-				}
-			}
-		}
-		'6.3' = @{
-			'Categories' = @{
-				'Hyper-V Server 2012 R2' = 3
-				'Windows 8.1 Enterprise' = 1
-				'Windows 8.1 Pro' = 1
-				'Windows Embedded 8.1 Industry Pro' = 2
-				'Windows Server 2012 R2 Datacenter' = 3
-				'Windows Server 2012 R2 Standard' = 3
-				'Windows Storage Server 2012 R2 Standard' = 3
-			}
-			'Builds' = @{
-				9600 = @{
-					'Version' = ''
-					'Availability' = '2013-11-25'
-					'EndOfServicing' = @{
-						1 = @{
-							'Mainstream' = '2018-01-09'
-							'Extended' = '2023-01-10'
-						}
-						2 = @{
-							'Mainstream' = '2018-07-10'
-							'Extended' = '2023-07-11'
-						}
-						3 = @{
-							'Mainstream' = '2018-10-09'
-							'Extended' = '2023-10-10'
-						}
-					}
-				}
-			}
-		}
-		'10.0' = @{
-			'Categories' = @{
-				'Windows 10 Business' = 1
-				'Windows 10 Education' = 2
-				'Windows 10 Enterprise 2015 LTSB' = 3
-				'Windows 10 Enterprise 2016 LTSB' = 3
-				'Windows 10 Enterprise for Virtual Desktops' = 2
-				'Windows 10 Enterprise LTSC' = 3
-				'Windows 10 Enterprise N' = 2
-				'Windows 10 Enterprise' = 2
-				'Windows 10 IoT Enterprise' = 2
-				# - https://learn.microsoft.com/en-us/windows/iot/iot-enterprise/whats-new/windows-iot-enterprise-ltsc
-				'Windows 10 IoT Enterprise LTSC' = 4
-				'Windows 10 Pro Education' = 1
-				'Windows 10 Pro for Workstations' = 1
-				'Windows 10 Pro N for Workstations' = 1
-				'Windows 10 Pro N' = 1
-				'Windows 10 Pro' = 1
-				'Windows 11 Business' = 1
-				'Windows 11 Education N' = 2
-				'Windows 11 Education' = 2
-				'Windows 11 Enterprise Multi-Session' = 2
-				'Windows 11 Enterprise' = 2
-				'Windows 11 IoT Enterprise' = 2
-				'Windows 11 Pro Education' = 1
-				'Windows 11 Pro for Workstations' = 1
-				'Windows 11 Pro' = 1
-
-				'Windows Server 2016 Datacenter' = 100
-				'Windows Server 2016 Standard' = 100
-				'Hyper-V Server 2016' = 100
-
-				'Windows Server 2019 Datacenter' = 110
-				'Windows Server 2019 Standard' = 110
-				'Hyper-V Server' = 110
-
-				'Windows Server 2022 Datacenter Azure Edition' = 120
-				'Windows Server 2022 Datacenter' = 120
-				'Windows Server 2022 Standard' = 120
-
-				'Windows Server 2025 Datacenter Azure Edition' = 130
-				'Windows Server 2025 Datacenter' = 130
-				'Windows Server 2025 Standard' = 130
-			}
-			'Builds' = @{
-				# - https://learn.microsoft.com/en-us/windows/release-health/release-information#windows-10-current-versions-by-servicing-option
-				# - https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro
-				# - https://learn.microsoft.com/en-us/lifecycle/products/windows-10-enterprise-and-education
-				# - https://learn.microsoft.com/en-us/lifecycle/products/windows-10-team-surface-hub
-					# - (Not yet included, as no releases are documented within.)
-				# - https://learn.microsoft.com/en-us/windows/iot/iot-enterprise/whats-new/release-history
-				10240 = @{
-					'Version' = '1507'
-					'Availability' = '2015-07-29'
-					'EndOfServicing' = @{
-						1 = '2017-05-09'
-						2 = '2017-05-09'
-						# - https://learn.microsoft.com/en-us/lifecycle/products/windows-10-2015-ltsb
-						3 = @{
-							'Mainstream' = '2020-10-13'
-							'Extended' = '2025-10-14'
-						}
-					}
-				}
-				10586 = @{
-					'Version' = '1511'
-					'Availability' = '2015-11-10'
-					'EndOfServicing' = @{
-						1 = '2017-10-10'
-						2 = '2017-10-10'
-					}
-				}
-				14393 = @{
-					'Version' = '1607'
-					'Availability' = @{
-						1 = '2016-08-02'
-						2 = '2016-08-02'
-						3 = '2016-08-02'
-						100 = '2016-10-15'
-					}
-					'EndOfServicing' = @{
-						1 = '2018-04-10'
-						2 = '2019-04-09'
-						# - https://learn.microsoft.com/en-us/lifecycle/products/windows-10-2016-ltsb
-						3 = @{
-							'Mainstream' = '2021-10-12'
-							'Extended' = '2026-10-13'
-						}
-						100 = @{
-							'Mainstream' = '2022-01-11'
-							'Extended' = '2027-01-12'
-						}
-					}
-				}
-				15063 = @{
-					'Version' = '1703'
-					'Availability' = '2017-04-11'
-					'EndOfServicing' = @{
-						1 = '2018-10-09'
-						2 = '2019-10-08'
-					}
-				}
-				16299 = @{
-					'Version' = '1709'
-					'Availability' = '2017-10-17'
-					'EndOfServicing' = @{
-						1 = '2019-04-09'
-						2 = '2020-10-13'
-					}
-				}
-				17134 = @{
-					'Version' = '1803'
-					'Availability' = '2018-04-30'
-					'EndOfServicing' = @{
-						1 = '2019-11-12'
-						2 = '2021-05-11'
-					}
-				}
-				17763 = @{
-					'Version' = '1809'
-					'Availability' = '2018-11-13'
-					'EndOfServicing' = @{
-						1 = '2020-11-10'
-						2 = '2021-05-11'
-						3 = @{
-							'Mainstream' = '2024-01-09'
-							'Extended' = '2029-01-09'
-						}
-						110 = @{
-							'Mainstream' = '2024-01-09'
-							'Extended' = '2029-01-09'
-						}
-					}
-				}
-				18362 = @{
-					'Version' = '1903'
-					'Availability' = '2019-05-21'
-					'EndOfServicing' = @{
-						1 = '2020-12-08'
-						2 = '2020-12-08'
-					}
-				}
-				18363 = @{
-					'Version' = '1909'
-					'Availability' = '2019-11-12'
-					'EndOfServicing' = @{
-						1 = '2021-05-11'
-						2 = '2022-05-10'
-					}
-				}
-				19041 = @{
-					'Version' = '2004'
-					'Availability' = '2020-10-20'
-					'EndOfServicing' = @{
-						1 = '2021-12-14'
-						2 = '2021-12-14'
-					}
-				}
-				19042 = @{
-					'Version' = '20H2'
-					'Availability' = '2020-10-20'
-					'EndOfServicing' = @{
-						1 = '2022-05-10'
-						2 = '2023-05-09'
-					}
-				}
-				19043 = @{
-					'Version' = '21H1'
-					'Availability' = '2021-05-18'
-					'EndOfServicing' = @{
-						1 = '2022-12-13'
-						2 = '2022-12-13'
-					}
-				}
-				19044 = @{
-					'Version' = '21H2'
-					'Availability' = '2021-11-16'
-					'EndOfServicing' = @{
-						1 = '2023-06-13'
-						2 = '2024-06-11'
-						3 = @{
-							'Mainstream' = '2027-01-12'
-							'Extended' = '2027-01-12'
-						}
-						4 = '2032-01-13'
-					}
-				}
-				19045 = @{
-					'Version' = '22H2'
-					'Availability' = '2022-10-18'
-					'EndOfServicing' = @{
-						1 = '2025-10-14'
-						2 = '2025-10-14'
-					}
-				}
-				20348 = @{
-					'Version' = ''
-					'Availability' = '2021-08-18'
-					'EndOfServicing' = @{
-						120 = @{
-							'Mainstream' = '2026-10-13'
-							'Extended' = '2031-10-14'
-						}
-					}
-				}
-				# - https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information#windows-11-current-versions
-				# - https://learn.microsoft.com/en-us/lifecycle/products/windows-11-home-and-pro
-				# - https://learn.microsoft.com/en-us/lifecycle/products/windows-11-enterprise-and-education
-				# - https://learn.microsoft.com/en-us/lifecycle/products/windows-11-iot-enterprise
-				22000 = @{
-					'Version' = '21H2'
-					'Availability' = '2021-10-04'
-					'EndOfServicing' = @{
-						1 = '2023-10-10'
-						2 = '2024-10-08'
-					}
-				}
-				22621 = @{
-					'Version' = '22H2'
-					'Availability' = '2022-09-20'
-					'EndOfServicing' = @{
-						1 = '2024-10-08'
-						2 = '2025-10-14'
-					}
-				}
-				22631 = @{
-					'Version' = '23H2'
-					'Availability' = '2023-10-31'
-					'EndOfServicing' = @{
-						1 = '2025-11-11'
-						2 = '2026-11-10'
-					}
-				}
-				# - https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2025
-				26100 = @{
-					'Version' = @{
-						1 = '24H2'
-						2 = '24H2'
-						130 = ''
-					}
-					'Availability' = @{
-						1 = '2024-10-01'
-						2 = '2024-10-01'
-						130 = '2024-11-01'
-					}
-					'EndOfServicing' = @{
-						1 = '2026-10-13'
-						2 = '2027-10-12'
-						130 = @{
-							'Mainstream' = '2029-10-09'
-							'Extended' = '2034-10-10'
-						}
-					}
-				}
-			}
-		}
-	}
-
-	# Overrides:
-	$osVersions["6.0"].Builds[6003] = $osVersions["6.0"].Builds[6002]
-
-	return $osVersions
-}
-
-function Get-ADPrivOSVersion($ctx, $row){
-	$result = [PSCustomObject][ordered]@{
-		Version = $null
-		Build = $null
-		BuildVersion = $null
-		Availability = $null
-		EndOfServicingMainstream = $null
-		EndOfServicingMainstreamLife = $null
-		EndOfServicingExtended = $null
-		EndOfServicingExtendedLife = $null
-		EndOfServicingMaxLife = $null
-	}
-
-	$osMatch = $osVersionPattern.Match($row.'OperatingSystemVersion')
-	if($osMatch.Success){
-		$osVer = $ctx.osVersions[$osMatch.Groups[1].Value]
-		if($osVer){
-			$result.Version = $osMatch.Groups[1].Value
-
-			$searchBuild = $osMatch.Groups[2].Value
-			if($searchBuild -ne ''){
-				$searchBuild = [int]$searchBuild
-			}
-			$result.Build = $searchBuild
-			$build = $osVer.'Builds'[$searchBuild]
-
-			$cats = $osVer.'Categories'
-			$tier = $cats[$row.'OperatingSystem']
-			if($null -ne $tier -and $build){
-				$buildVersion = $build.Version
-				if($buildVersion -isnot [string]){
-					$buildVersion = $buildVersion[$tier]
-				}
-				$result.BuildVersion = $buildVersion
-
-				$availability = $build.Availability
-				if($availability -isnot [string]){
-					$availability = $availability[$tier]
-				}
-				$result.Availability = $availability
-
-				$endOfServicing = $build.EndOfServicing
-				if($endOfServicing -is [string]){
-					$result.EndOfServicingMainstream = $endOfServicing
-				}else{
-					$endOfServicing = $endOfServicing[$tier]
-					if($endOfServicing -is [string]){
-						$result.EndOfServicingMainstream = $endOfServicing
-					}else{
-						$result.EndOfServicingMainstream = $endOfServicing['Mainstream']
-						$result.EndOfServicingExtended = $endOfServicing['Extended']
-					}
-				}
-
-				if($result.EndOfServicingMainstream){
-					$result.EndOfServicingMainstreamLife = ([datetime]$result.EndOfServicingMainstream - $ctx.params.now.Date).Days
-					$result.EndOfServicingMaxLife = $result.EndOfServicingMainstreamLife
-				}
-				if($result.EndOfServicingExtended){
-					$result.EndOfServicingExtendedLife = ([datetime]$result.EndOfServicingExtended - $ctx.params.now.Date).Days
-					$result.EndOfServicingMaxLife = [Math]::Max($result.EndOfServicingMainstreamLife, $result.EndOfServicingExtendedLife)
-				}
-			}
-		}
-	}
-
-	return $result
-}
-
 function Resolve-EIDPrivProps{
 	param (
 		[Parameter(Mandatory)]
-		[ValidateSet('Users', 'Devices', 'Groups', 'NamedLocations', 'RoleDefinitions', 'ServicePrincipals', 'SubscribedSKUs')]
+		[ValidateSet('Users', 'Devices', 'Groups', 'NamedLocations', 'RoleDefinitions', 'ServicePrincipals', 'SubscribedSKUs', 'DefaultUserRolePermissions')]
 		[string[]]$Type
 	)
 	$userProperties = @(
@@ -763,7 +161,8 @@ function Resolve-EIDPrivProps{
 		$Global:EIDPropsCache.NamedLocations -or -not `
 		$Global:EIDPropsCache.RoleDefinitions -or -not `
 		$Global:EIDPropsCache.ServicePrincipals -or -not `
-		$Global:EIDPropsCache.SubscribedSKUs) {
+		$Global:EIDPropsCache.SubscribedSKUs -or -not `
+		$Global:EIDPropsCache.DefaultUserRolePermissions) {
 			Write-Log 'Initializing Microsoft Graph cache...'
 			if (-not $Global:EIDPropsCache.Users) {
 				$Global:EIDPropsCache.Users = Get-MgUser -All -Property $userProperties
@@ -785,6 +184,9 @@ function Resolve-EIDPrivProps{
 			}
 			if (-not $Global:EIDPropsCache.SubscribedSKUs) {
 				$Global:EIDPropsCache.SubscribedSKUs = Get-MgSubscribedSku -All
+			}
+			if (-not $Global:EIDPropsCache.DefaultUserRolePermissions) {
+				$Global:EIDPropsCache.DefaultUserRolePermissions = (Get-MgBetaPolicyAuthorizationPolicy).DefaultUserRolePermissions
 			}
 			Write-Log 'Microsoft Graph cache initialized.'
 		}
@@ -1608,35 +1010,6 @@ function Test-StaleDevices($ctx){
 	}
 }
 
-function Test-UnsupportedOS($ctx){
-	$ctx.osVersions = Initialize-ADPrivOSVersions
-
-	New-EIDPrivReport -ctx $ctx -name 'unsupportedOS' -title 'Unsupported Operating Systems' -dataSource {
-		(Resolve-EIDPrivProps -Type Devices).Devices `
-			| ForEach-Object {
-				$row = $_
-				$osVer = Get-ADPrivOSVersion $ctx $row
-				if($osVer.EndOfServicingMainstreamLife -le 365){
-					# Force a copy for now.
-					# This should be further optimized later to avoid the need for a second copy of all properties per row in ConvertTo-ADPrivRows...
-					$row = $_ | Select-Object -Property *,
-						@{n='OS Version'; e={$osVer.Version}},
-						@{n='OS Build'; e={$osVer.Build}},
-						@{n='OS Build Ver'; e={$osVer.BuildVersion}},
-						@{n='OS Availability'; e={$osVer.Availability}},
-						@{n='OS EOS Mainstream'; e={$osVer.EndOfServicingMainstream}},
-						@{n='OS EOS Mainstream Life'; e={$osVer.EndOfServicingMainstreamLife}},
-						@{n='OS EOS Extended'; e={$osVer.EndOfServicingExtended}},
-						@{n='OS EOS Extended Life'; e={$osVer.EndOfServicingExtendedLife}},
-						@{n='OS EOS Max Life'; e={$osVer.EndOfServicingMaxLife}}
-					$row
-				}
-			} | Sort-Object -Property 'OS EOS Mainstream Life', 'lastLogonTimestamp' `
-			| ConvertTo-EIDPrivRows -property (@('Name', 'OperatingSystem', 'OperatingSystemVersion', 'OS Version', 'OS Build', 'OS Build Ver', 'OS Availability',
-				'OS EOS Mainstream', 'OS EOS Mainstream Life', 'OS EOS Extended', 'OS EOS Extended Life', 'OS EOS Max Life', 'lastLogonTimestampDate'))
-	}
-}
-
 function Test-UserRegistration($ctx){
 	New-EIDPrivReport -ctx $ctx -name 'userRegistration' -title 'User Registration' -dataSource {
 		$regDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
@@ -1882,16 +1255,35 @@ function Test-CAPolicies($ctx) {
 	} | ConvertTo-EIDPrivRows
 }
 
-function Test-AuditStatus {
+function Test-UserCanRegisterApps($ctx) {
 	try {
-		$auditConfig = Get-AdminAuditLogConfig | Format-List UnifiedAuditLogIngestionEnabled
-		if ($auditConfig -match 'True') {
-			Write-Log -Message 'Auditing is enabled for your tenant.'
+		$propsCache = Resolve-EIDPrivProps -Type DefaultUserRolePermissions
+		$ctx = $propsCache.DefaultUserRolePermissions.AllowedToCreateApps
+		if ($ctx -eq $true) {
+			Write-Log -Message 'Users can register applications in your tenant.' -Severity WARN
+		} elseif ($ctx -eq $false) {
+			Write-Log -Message 'Users cannot register applications in your tenant.'
 		} else {
-			Write-Log -Message 'Auditing is not enabled for your tenant.' -Severity WARN
+			Write-Log -Message "Unexpected value for UserCanRegisterApps: $ctx" -Severity ERROR
 		}
 	} catch {
-		Write-Log -Message "Error running 'Test-AuditStatus' report. Error: $_" -Severity ERROR
+			Write-Log -Message "Error checking app register permissions: $_" -Severity ERROR
+	}
+}
+
+function Test-UserCanCreateGroups($ctx) {
+	try {
+		$propsCache = Resolve-EIDPrivProps -Type DefaultUserRolePermissions
+		$ctx = $propsCache.DefaultUserRolePermissions.AllowedToCreateSecurityGroups
+		if ($ctx -eq $true) {
+			Write-Log -Message 'Users can create security groups in your tenant.' -Severity WARN
+		} elseif ($ctx -eq $false) {
+			Write-Log -Message 'Users cannot create security groups in your tenant.'
+		} else {
+			Write-Log -Message "Unexpected value for UserCanCreateGroups: $ctx" -Severity ERROR
+		}
+	} catch {
+		Write-Log -Message "Error checking group creation permissions: $_" -Severity ERROR
 	}
 }
 
@@ -1946,9 +1338,6 @@ function Invoke-EIDPrivReports($ctx){
 	# Stale Devices...
 	Test-StaleDevices -ctx $ctx
 
-	# Computers with unsupported operating systems...
-	#Test-UnsupportedOS -ctx $ctx
-
 	# User Registration...
 	Test-UserRegistration -ctx $ctx
 
@@ -1967,8 +1356,11 @@ function Invoke-EIDPrivReports($ctx){
 	# Conditional Access Policies...
 	Test-CAPolicies -ctx $ctx
 
-	# Audit Status...
-	#Test-AuditStatus
+	# User Can Create Apps...
+	Test-UserCanRegisterApps -ctx $ctx
+
+	# User Can Create Groups...
+	Test-UserCanCreateGroups -ctx $ctx
 
 	# Shared Mailbox Sign-In Allowed...
 	#Test-SharedMailboxSignInAllowed
@@ -2007,7 +1399,6 @@ function Invoke-EIDPrivReports($ctx){
 function Invoke-EIDPrivMain(){
 	try{
 		$ctx = Initialize-EIDPrivReports
-		#Resolve-EIDPrivProps -Type Users, Devices, Groups, RoleDefinitions, ServicePrincipals, SubscribedSKUs
 		Invoke-EIDPrivReports -ctx $ctx
 		Disconnect-MgGraph
 		Write-Log 'Done!'
