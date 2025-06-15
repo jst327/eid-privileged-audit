@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-06-14
+# Justin Tucker - 2025-01-01, 2025-06-15
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-06-14'
+$version = '2025-06-15'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -1059,9 +1059,12 @@ function Get-UserLicenses {
 	$propsCache = Resolve-EIDPrivProps -Type Users, SubscribedSKUs
 	$allUsers = $propsCache.Users
 	$allSKUs = $propsCache.SubscribedSKUs
+
 	try {
 		$licensedUsers = [System.Collections.Generic.List[Object]]::new()
+		$disabledLicensedUsers = @()
 		$users = $allUsers | Where-Object { $_.AssignedLicenses.Count -gt 0 }
+
 		foreach ($user in $users) {
 			foreach ($license in $user.AssignedLicenses) {
 				$obj = [PSCustomObject]@{
@@ -1070,7 +1073,7 @@ function Get-UserLicenses {
 					'UserPrincipalName' = $user.UserPrincipalName
 					'Type' = $user.UserType
 					'AccountEnabled' = $user.AccountEnabled
-					'License' = if($Global:licenseGUID[$license.SkuId]) {
+					'License' = if ($Global:licenseGUID[$license.SkuId]) {
 						$Global:licenseGUID[$license.SkuId]
 					} else {
 						$allSKUs | Where-Object { $_.SkuId -eq $license.SkuId } | Select-Object -ExpandProperty SkuPartNumber
@@ -1078,11 +1081,21 @@ function Get-UserLicenses {
 				}
 				$licensedUsers.Add($obj)
 			}
+
 			if ($user.AccountEnabled -eq $false) {
-				Write-Log "Licensed user account $($user.UserPrincipalName) is disabled." -Severity WARN
+				$disabledLicensedUsers += $user
 			}
 		}
-		$licensedUsers = $licensedUsers | Sort-Object @{Expression = {if ($_.AccountEnabled -eq $false) {0} else {1}}}, DisplayName
+
+		if ($disabledLicensedUsers.Count -gt 0 -and $disabledLicensedUsers.Count -lt 2) {
+			Write-Log "$($disabledLicensedUsers.Count) disabled licensed user account found." -Severity WARN
+		}
+
+		if ($disabledLicensedUsers.Count -gt 1) {
+			Write-Log "$($disabledLicensedUsers.Count) disabled licensed user accounts found." -Severity WARN
+		}
+
+		$licensedUsers = $licensedUsers | Sort-Object @{ Expression = { if ($_.AccountEnabled -eq $false) { 0 } else { 1 } } }, DisplayName
 		$licensedUsers
 	} catch {
 		Write-Log -Message "Error creating 'User Licenses' report. Error: $_" -Severity ERROR
