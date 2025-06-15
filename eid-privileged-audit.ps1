@@ -1259,13 +1259,13 @@ function Test-CAPolicies($ctx) {
 				}
 			}
 
-			return $policyList | Sort-Object DisplayName
+			$policyList | Sort-Object DisplayName | ConvertTo-EIDPrivRows
 		}
 		catch {
 			Write-Log -Message "Error retrieving Conditional Access policies: $_" -Severity ERROR
 			return @()
 		}
-	} | ConvertTo-EIDPrivRows
+	}
 }
 
 function Test-UserCanRegisterApps($ctx) {
