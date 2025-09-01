@@ -103,8 +103,8 @@ $requiredModules = @(
 	'Microsoft.Graph.Identity.SignIns',
 	'Microsoft.Graph.Reports',
 	'Microsoft.Graph.Users',
-	'Microsoft.Graph.Beta.Identity.SignIns',
-	'ExchangeOnlineManagement'
+	'Microsoft.Graph.Beta.Identity.SignIns'
+	#'ExchangeOnlineManagement'
 )
 $missingModules = @()
 

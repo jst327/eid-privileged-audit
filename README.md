@@ -18,10 +18,17 @@ Building on the concept of Mark Ziesemer's [AD Privileged Audit](https://github.
 
 ## Prerequisites
 
-1. **PowerShell Version:** PowerShell 5.1 required. Designed to be fast and efficient, typically provides "immediate" (no post-processing required) results within several minutes.
+1. **PowerShell Version:** PowerShell 5.1 minimum required. Designed to be fast and efficient, typically provides "immediate" (no post-processing required) results within several minutes.
 2. **PowerShell Modules:** While the script checks, it will not install the following required modules:
-   * Microsoft.Graph
-   * ExchangeOnlineManagement (for auditing check)
+   * Microsoft.Graph.Applications
+   * Microsoft.Graph.Authentication
+   * Microsoft.Graph.Groups
+   * Microsoft.Graph.Identity.DirectoryManagement
+   * Microsoft.Graph.Identity.Governance
+   * Microsoft.Graph.Identity.SignIns
+   * Microsoft.Graph.Reports
+   * Microsoft.Graph.Users
+   * Microsoft.Graph.Beta.Identity.SignIns
 3. **Permissions:** The account running the script should have one of the following Entra roles:
    * Global Administrator
    * Application Administrator
