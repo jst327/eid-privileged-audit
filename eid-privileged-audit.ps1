@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-06-15
+# Justin Tucker - 2025-01-01, 2025-08-31
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-06-15'
+$version = '2025-08-31'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -94,7 +94,18 @@ function Test-ModuleInstalled {
 	return $false
 }
 
-$requiredModules = @('Microsoft.Graph','Microsoft.Graph.Beta')
+$requiredModules = @(
+	'Microsoft.Graph.Applications',
+	'Microsoft.Graph.Authentication',
+	'Microsoft.Graph.Groups',
+	'Microsoft.Graph.Identity.DirectoryManagement',
+	'Microsoft.Graph.Identity.Governance',
+	'Microsoft.Graph.Identity.SignIns',
+	'Microsoft.Graph.Reports',
+	'Microsoft.Graph.Users',
+	'Microsoft.Graph.Beta.Identity.SignIns',
+	'ExchangeOnlineManagement'
+)
 $missingModules = @()
 
 foreach ($module in $requiredModules) {
@@ -106,7 +117,11 @@ foreach ($module in $requiredModules) {
 Write-Log 'Checking for required PowerShell modules...'
 
 if ($missingModules.Count -gt 0) {
-	Write-Log "The following required modules are not installed: $($missingModules -join ', ')" -Severity ERROR
+	foreach ($module in $missingModules) {
+		Write-Log "Required module not installed: $module" -Severity ERROR
+		Write-Log 'You may install them using the follow command:' -Severity DEBUG
+		Write-Log "    Install-Module $module -Scope CurrentUser" -Severity DEBUG
+	}
 	Write-Host "Press Enter to exit...:"
 	do {
 		$key = [System.Console]::ReadKey($true)
@@ -114,27 +129,33 @@ if ($missingModules.Count -gt 0) {
 	exit 1
 }
 
-Write-Log "Required modules are installed: $($requiredModules -join ', ')"
+Write-Log 'Required modules are installed.'
 Write-Log 'All requirements met. Proceeding with the script...'
+
+$scopes = @(
+	'AdministrativeUnit.Read.All',
+	'Application.Read.All',
+	'AuditLog.Read.All',
+	'Domain.Read.All',
+	'Directory.Read.All',
+	'RoleAssignmentSchedule.Read.Directory',
+	'RoleEligibilitySchedule.Read.Directory',
+	'RoleManagement.Read.Directory',
+	'Policy.Read.All',
+	'User.Read.All'
+)
 
 function Connect-MicrosoftGraph {
 	try {
-		Connect-MgGraph -Scope `
-				'User.Read.All', `
-				'Directory.Read.All', `
-				'AuditLog.Read.All', `
-				'RoleManagement.Read.Directory', `
-				'AdministrativeUnit.Read.All', `
-				'RoleAssignmentSchedule.Read.Directory', `
-				'RoleEligibilitySchedule.Read.Directory', `
-				'Application.Read.All' `
-			-NoWelcome
+		Connect-MgGraph -Scope $scopes -NoWelcome
 	} catch {
 		Write-Log -Message "Unable to connect to Microsoft Graph. Error: $_" -Severity ERROR
 	}
 }
 
 Connect-MicrosoftGraph
+
+#Connect-ExchangeOnline -ShowBanner:$false
 
 function Resolve-EIDPrivProps{
 	param (
@@ -1304,6 +1325,8 @@ function Test-SharedMailboxSignInAllowed {
 	New-EIDPrivReport -ctx $ctx -name 'sharedMailboxSignInAllowed' -title 'Shared Mailbox Sign-In Allowed' -dataSource {
 		$sharedMailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox
 		$enabledMailboxes = [System.Collections.Generic.List[Object]]::new()
+		$propsCache = Resolve-EIDPrivProps -Type Users
+		$allUsers = $propsCache.Users
 
 		foreach ($mailbox in $sharedMailboxes) {
 			try {
@@ -1311,7 +1334,7 @@ function Test-SharedMailboxSignInAllowed {
 
 				if ($null -ne $mailbox.userPrincipalName) {
 					try {
-						$enabledUsers = Get-MgUser -Filter 'accountEnabled eq true' | Where-Object {$_.UserPrincipalName -eq $mailbox.UserPrincipalName}
+						$enabledUsers = $allUsers | Where-Object {$_.UserPrincipalName -eq $mailbox.UserPrincipalName -and $_.AccountEnabled -eq $true} | Select-Object AccountEnabled,DisplayName,UserPrincipalName
 					} catch {
 						Write-Log -Message "Error retrieving user $($mailbox.userPrincipalName). Error: $_" -Severity WARN
 					}
@@ -1321,7 +1344,7 @@ function Test-SharedMailboxSignInAllowed {
 					$enabledMailboxes += [PSCustomObject]@{
 						'Name' = $enabledUsers.DisplayName
 						'userPrincipalName' = $enabledUsers.UserPrincipalName
-						'Sign-In' = 'Enabled'
+						'Sign-In' = $enabledUsers.AccountEnabled
 					}
 					Write-Log -Message "The shared mailbox account for $($mailbox.UserPrincipalName) is enabled." -Severity WARN
 					Add-ToWarningsAndErrors -Type 'Warning' -Message "The shared mailbox account for $($mailbox.UserPrincipalName) is enabled." -Function 'Shared Mailbox Sign-In Allowed'
@@ -1331,7 +1354,7 @@ function Test-SharedMailboxSignInAllowed {
 			}
 		}
 	}
-	$enabledMailboxes = $enabledMailboxes | Sort-Object 'DisplayName'
+	$enabledMailboxes = $enabledMailboxes | Where-Object {$_.'Sign-In' -eq $true}
 	$enabledMailboxes | ConvertTo-EIDPrivRows
 }
 
