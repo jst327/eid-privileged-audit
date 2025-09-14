@@ -1,4 +1,4 @@
-# Justin Tucker - 2025-01-01, 2025-08-31
+# Justin Tucker - 2025-01-01, 2025-09-13
 # SPDX-FileCopyrightText: Copyright © 2025, Justin Tucker
 # https://github.com/jst327/eid-privileged-audit
 
@@ -15,7 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$version = '2025-08-31'
+$version = '2025-09-13'
 $warnings = [System.Collections.ArrayList]::new()
 $EIDConnectParams = @{}
 
@@ -223,6 +223,47 @@ function Resolve-EIDPrivProps{
 	return $result
 }
 
+$script:GridViews = [System.Collections.Generic.List[hashtable]]::new()
+
+function Add-GridView {
+	[CmdletBinding()]
+	param(
+		[Parameter(ValueFromPipeline=$true)]
+		$InputObject,
+		[string]$Title = 'Report',
+		[switch]$PassThru,
+		[switch]$Wait
+	)
+	begin { $buf = New-Object System.Collections.Generic.List[object] }
+	process { if($null -ne $InputObject){ [void]$buf.Add($InputObject) } }
+	end {
+		$script:GridViews.Add(@{
+			Title = $Title
+			Data  = $buf.ToArray()
+			PassThru = [bool]$PassThru
+			Wait     = [bool]$Wait
+		})
+	}
+}
+
+function Show-QueuedGridViews {
+	[CmdletBinding()]
+	param(
+		[ValidateSet('AllAtOnce','Sequential')]
+		[string]$Mode = 'Sequential'
+	)
+	foreach($g in $script:GridViews){
+		$params = @{
+			Title    = $g.Title
+		}
+		if($g.PassThru){ $params.PassThru = $true }
+		if($Mode -eq 'Sequential'){ $params.Wait = $true }
+		$null = $g.Data | Microsoft.PowerShell.Utility\Out-GridView @params
+	}
+	$script:GridViews.Clear()
+}
+
+
 function ConvertTo-EIDPrivRows{
 	[CmdletBinding()]
 	param(
@@ -310,7 +351,7 @@ function Out-EIDPrivReports{
 				$ctx.reportFiles[$name] = $path
 			}
 			if($ctx.params.interactive){
-				$results | Out-GridView -Title $caption
+				$results | Add-GridView -Title $caption
 			}
 		}elseif(!$ctx.params.noFiles){
 			# Write (or overwrite) an empty file.
@@ -1359,73 +1400,88 @@ function Test-SharedMailboxSignInAllowed {
 }
 
 function Invoke-EIDPrivReports($ctx){
-	# Privileged Users...
-	Test-PrivilegedUsers -ctx $ctx
+	$steps = New-Object System.Collections.Generic.List[hashtable]
 
-	# Privileged Roles...
-	Test-PrivilegedRoles -ctx $ctx
-
-	# Stale Users...
-	Test-StaleUsers -ctx $ctx
-
-	# Stale Passwords...
-	Test-StalePasswords -ctx $ctx
-
-	# Stale Devices...
-	Test-StaleDevices -ctx $ctx
-
-	# User Registration...
-	Test-UserRegistration -ctx $ctx
-
-	# User Licenses...
-	New-EIDPrivReport -ctx $ctx -name 'userLicenses' -title 'User Licenses' -dataSource {
-		Get-UserLicenses `
-			| ConvertTo-EIDPrivRows
+	$addStep = {
+		param([string]$name, [scriptblock]$action)
+		$steps.Add(@{ Name = $name; Action = $action })
 	}
 
-	# Tenant Licenses...
-	New-EIDPrivReport -ctx $ctx -name 'tenantLicenses' -title 'Tenant Licenses' -dataSource {
-		Get-TenantLicenses `
-			| ConvertTo-EIDPrivRows
-	}
-
-	# Conditional Access Policies...
-	Test-CAPolicies -ctx $ctx
-
-	# User Can Create Apps...
-	Test-UserCanRegisterApps -ctx $ctx
-
-	# User Can Create Groups...
-	Test-UserCanCreateGroups -ctx $ctx
-
-	# Shared Mailbox Sign-In Allowed...
-	#Test-SharedMailboxSignInAllowed
-
-	# Warnings...
-	New-EIDPrivReport -ctx $ctx -name 'warnings' -title 'Warnings' -mayNotFail -dataSource {
-		$warnings `
-			| ConvertTo-EIDPrivRows
-	}
-
-	# Post-run File Processing
-	if(!($ctx.params.noFiles)){
-		if(!($ctx.params.noZip)){
-			Write-Log 'Creating compressed archive...'
-			$zipPath = $ctx.params.filePattern -f '' + '.zip'
-			Compress-Archive -Path $ctx.reportFiles.Values -DestinationPath $zipPath -CompressionLevel 'Optimal' -Force
-			$ctx.reportFiles['zip'] = $zipPath
+	& $addStep 'Privileged Users' { Test-PrivilegedUsers -ctx $ctx }
+	& $addStep 'Privileged Roles' { Test-PrivilegedRoles -ctx $ctx }
+	& $addStep 'Stale Users' { Test-StaleUsers -ctx $ctx }
+	& $addStep 'Stale Passwords' { Test-StalePasswords -ctx $ctx }
+	& $addStep 'Stale Devices' { Test-StaleDevices -ctx $ctx }
+	& $addStep 'User Registration' { Test-UserRegistration -ctx $ctx }
+	& $addStep 'User Licenses' {
+		New-EIDPrivReport -ctx $ctx -name 'userLicenses' -title 'User Licenses' -dataSource {
+			Get-UserLicenses | ConvertTo-EIDPrivRows
 		}
+	}
+	& $addStep 'Tenant Licenses' {
+		New-EIDPrivReport -ctx $ctx -name 'tenantLicenses' -title 'Tenant Licenses' -dataSource {
+			Get-TenantLicenses | ConvertTo-EIDPrivRows
+		}
+	}
+	& $addStep 'Conditional Access Policies' { Test-CAPolicies -ctx $ctx }
+	& $addStep 'User Can Register Apps' { Test-UserCanRegisterApps -ctx $ctx }
+	& $addStep 'User Can Create Groups' { Test-UserCanCreateGroups -ctx $ctx }
+#	& $addStep 'Shared Mailbox Sign-In Allowed' { Test-SharedMailboxSignInAllowed } # left commented
+	& $addStep 'Warnings' {
+		New-EIDPrivReport -ctx $ctx -name 'warnings' -title 'Warnings' -mayNotFail -dataSource {
+			$warnings | ConvertTo-EIDPrivRows
+		}
+	}
 
-		if($ctx.params.firstRunFiles){
-			Write-Log 'Copying files as initial run...'
-			foreach($f in $ctx.reportFiles.Values){
-				$f2 = $f -replace '\.[^\.\\]+$', '-initial$0'
-				Copy-Item -Path $f -Destination $f2
+	if(-not $ctx.params.noFiles){
+		if(-not $ctx.params.noZip){
+			& $addStep 'Create compressed archive (ZIP)' {
+				Write-Log 'Creating compressed archive...'
+				$zipPath = $ctx.params.filePattern -f '' + '.zip'
+				Compress-Archive -Path $ctx.reportFiles.Values -DestinationPath $zipPath -CompressionLevel 'Optimal' -Force
+				$ctx.reportFiles['zip'] = $zipPath
 			}
 		}
 
-		Invoke-EIDPrivReportHistory -ctx $ctx
+		if($ctx.params.firstRunFiles){
+			& $addStep 'Copy initial run files' {
+				Write-Log 'Copying files as initial run...'
+				foreach($f in $ctx.reportFiles.Values){
+					$f2 = $f -replace '\.[^\.\\]+$', '-initial$0'
+					Copy-Item -Path $f -Destination $f2
+				}
+			}
+		}
+
+		& $addStep 'Update report history' {
+			Invoke-EIDPrivReportHistory -ctx $ctx
+		}
 	}
+
+	$activity = 'Running EID Privileged Reports'
+	$total = [math]::Max(1, $steps.Count)
+	$progressId = 1
+
+	for($i = 0; $i -lt $steps.Count; $i++){
+		$step = $steps[$i]
+		$status = ('{0}/{1}: {2}' -f ($i+1), $total, $step.Name)
+
+		$percentBefore = [math]::Floor((100.0 * $i) / $total)
+
+		Write-Progress -Id $progressId -Activity $activity -Status $status -PercentComplete $percentBefore
+
+		try {
+			& $($step.Action)
+		} catch {
+			Write-Progress -Id $progressId -Activity $activity -Status ("Error on step: {0}" -f $step.Name) -PercentComplete $percentBefore
+			throw
+		}
+
+		$percentAfter = [math]::Floor((100.0 * ($i + 1)) / $total)
+		Write-Progress -Id $progressId -Activity $activity -Status $status -PercentComplete $percentAfter
+	}
+
+	Write-Progress -Id $progressId -Activity $activity -Completed
 
 	if($ctx.params.passThru){
 		return [PSCustomObject]$ctx
@@ -1436,6 +1492,7 @@ function Invoke-EIDPrivMain(){
 	try{
 		$ctx = Initialize-EIDPrivReports
 		Invoke-EIDPrivReports -ctx $ctx
+		Show-QueuedGridViews -Mode AllAtOnce
 		Disconnect-MgGraph
 		Write-Log 'Done!'
 		if($ctx.params.interactive){
