@@ -120,7 +120,7 @@ if ($missingModules.Count -gt 0) {
 	foreach ($module in $missingModules) {
 		Write-Log "Required module not installed: $module" -Severity ERROR
 		Write-Log 'You may install them using the follow command:' -Severity DEBUG
-		Write-Log "    Install-Module $module -Scope CurrentUser" -Severity DEBUG
+		Write-Log "    Install-Module -Name $module -Scope CurrentUser" -Severity DEBUG
 	}
 	Write-Host "Press Enter to exit...:"
 	do {
